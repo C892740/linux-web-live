@@ -2,9 +2,10 @@ import { clerkAppearance } from "@/lib/clerk";
 import { SignUp } from "@clerk/clerk-react";
 import { ShieldCheck } from "lucide-react";
 import { useEffect } from "react";
-import { useNavigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 import logo from "@/assets/logo.svg";
 import { useAuth } from "@/hooks/use-auth";
+import { useAuthMode } from "@/providers/AppProviders";
 
 /**
  * Clerk sign-up screen. Only reachable in Clerk mode (the /sign-up route is
@@ -14,12 +15,20 @@ import { useAuth } from "@/hooks/use-auth";
 export default function ClerkSignUp() {
   const navigate = useNavigate();
   const { isLoading, isAuthenticated } = useAuth();
+  const mode = useAuthMode();
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
       navigate("/onboarding", { replace: true });
     }
   }, [isLoading, isAuthenticated, navigate]);
+
+  // Legacy mode has no ClerkProvider, so <SignUp /> can't mount — route
+  // visitors into the built-in sign-in instead of crashing. (Placed after
+  // the hooks: early returns must not precede hook calls.)
+  if (mode === "legacy") {
+    return <Navigate to="/auth" replace />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col">

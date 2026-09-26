@@ -64,8 +64,13 @@ async function safeGetUser(
 
 /**
  * Ensure a users row exists for the current identity and return its id.
- * Creates the row on first Clerk sign-in (externalId = Clerk user id) and
- * refreshes name/email from the verified token claims.
+ *
+ * Beyond creation, it also heals the row against fresher token claims:
+ *  - backfills name/email when the row lacks them (Clerk's default session
+ *    token carries only `sub`/`aud` unless extra claims are mapped, so
+ *    without this the verified-student email check would silently never fire),
+ *  - stamps externalId onto rows first created in legacy mode once the same
+ *    person signs in through Clerk (matched by verified email).
  */
 export async function ensureCurrentUser(
   ctx: MutationCtx,
@@ -73,17 +78,47 @@ export async function ensureCurrentUser(
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
 
-  const existing = await resolveCurrentUser(ctx);
-  if (existing) return existing._id;
+  const tokenName = identity.name ?? undefined;
+  const tokenEmail = identity.email ?? undefined;
 
-  const name = (identity.name as string | undefined) ?? undefined;
-  const email = identity.email ?? undefined;
+  // 1) Legacy self-issued tokens put the users row id in the subject.
+  const bySubject = await safeGetUser(ctx, identity.subject);
+  if (bySubject) return bySubject._id;
 
-  // Clerk path: keyed on externalId. Legacy identities always match via
-  // subject/email above, so reaching here means a fresh Clerk user.
+  // 2) Clerk: rows keyed by externalId = Clerk user id.
+  const byExternal = await ctx.db
+    .query("users")
+    .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+    .first();
+  if (byExternal) {
+    if (
+      (tokenEmail && byExternal.email !== tokenEmail && !byExternal.email) ||
+      (tokenName && byExternal.name !== tokenName && !byExternal.name)
+    ) {
+      await ctx.db.patch(byExternal._id, {
+        ...(tokenEmail && !byExternal.email ? { email: tokenEmail } : {}),
+        ...(tokenName && !byExternal.name ? { name: tokenName } : {}),
+      });
+    }
+    return byExternal._id;
+  }
+
+  // 3) Row created before Clerk (legacy mode) — link it by verified email.
+  if (tokenEmail) {
+    const byEmail = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", tokenEmail))
+      .first();
+    if (byEmail) {
+      await ctx.db.patch(byEmail._id, { externalId: identity.subject });
+      return byEmail._id;
+    }
+  }
+
+  // 4) Fresh identity — create the row.
   return await ctx.db.insert("users", {
     externalId: identity.subject,
-    name,
-    email,
+    name: tokenName,
+    email: tokenEmail,
   });
 }
