@@ -158,6 +158,14 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <ClerkProvider
       publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string}
       appearance={clerkAppearance}
+      // Route + redirect config (the Vite equivalent of Clerk's Next.js
+      // NEXT_PUBLIC_CLERK_*_URL env vars): sign-in lives on /auth, sign-up on
+      // /sign-up, and both hand off to onboarding (course picker) which then
+      // routes to the dashboard.
+      signInUrl="/auth"
+      signUpUrl="/sign-up"
+      afterSignInUrl="/onboarding"
+      afterSignUpUrl="/onboarding"
       afterSignOutUrl="/"
     >
       <ModeContext.Provider value="clerk">
