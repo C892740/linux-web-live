@@ -20,7 +20,7 @@
  * 32-bit emulator and browser streaming, so v1 can't boot them honestly.
  */
 
-export type BootMedia = "cdrom" | "kernel" | "floppy";
+export type BootMedia = "cdrom" | "kernel" | "floppy" | "hda";
 
 export interface Distro {
   id: string;

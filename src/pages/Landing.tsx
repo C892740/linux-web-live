@@ -14,6 +14,7 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   ArrowUpRight,
+  Disc3,
   GraduationCap,
   ShieldCheck,
   Zap,
@@ -234,6 +235,38 @@ export default function Landing() {
               {DISTROS.map((distro, index) => (
                 <DistroCard key={distro.id} distro={distro} index={index} />
               ))}
+
+              {/* Bring-your-own-ISO card closes the registry grid */}
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.35, delay: 0.2 }}
+                className="h-full"
+              >
+                <Link
+                  to="/boot"
+                  className="group flex h-full min-h-[220px] flex-col justify-between rounded-lg border-2 border-dashed border-border bg-transparent p-5 transition-colors hover:border-primary/60 hover:bg-primary/5"
+                >
+                  <div>
+                    <div className="flex size-11 items-center justify-center rounded-md bg-primary/10 text-primary">
+                      <Disc3 className="size-5" />
+                    </div>
+                    <h3 className="mt-3.5 font-semibold leading-tight tracking-tight">
+                      Boot your own ISO
+                    </h3>
+                    <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
+                      Any 32-bit image from your disk, read locally — nothing
+                      uploads. Zorin Core 17 is 64-bit only, but 32-bit builds
+                      of other distros work.
+                    </p>
+                  </div>
+                  <span className="mt-4 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-primary">
+                    Open the tray
+                    <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+              </motion.div>
             </div>
           </div>
         </section>

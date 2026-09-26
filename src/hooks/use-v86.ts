@@ -56,6 +56,14 @@ async function fetchWithProgress(
 /** Ctrl+Alt+Del as i8042 make/break scancodes. */
 const CTRL_ALT_DEL_SCANCODES = [0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d];
 
+export interface UseV86Overrides {
+  /** Pre-loaded image bytes (e.g. a user's own ISO read via FileReader).
+   *  When set, the hook skips its own fetch entirely. */
+  buffer?: ArrayBuffer | null;
+  /** Overrides the distro's default RAM for this session. */
+  memoryMb?: number;
+}
+
 /**
  * Boots a distro in v86, exposing UI-facing phase/progress/error state.
  *
@@ -63,7 +71,10 @@ const CTRL_ALT_DEL_SCANCODES = [0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d];
  * destroyed on unmount, so navigating away from /run/:distroId tears the
  * whole VM down cleanly.
  */
-export function useV86(distro: Distro | undefined): UseV86Result {
+export function useV86(
+  distro: Distro | undefined,
+  overrides?: UseV86Overrides,
+): UseV86Result {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const emulatorRef = useRef<V86Instance | null>(null);
   const bootedRef = useRef(false);
@@ -84,15 +95,24 @@ export function useV86(distro: Distro | undefined): UseV86Result {
       const container = containerRef.current;
       if (!container) throw new Error("Screen container is missing.");
 
-      setPhase("downloading");
-      const buffer = await fetchWithProgress(distro.imageUrl, (fraction) => {
-        setProgress(fraction === null ? null : Math.round(fraction * 100));
-      });
+      const bufferOverride = overrides?.buffer;
+      let buffer: ArrayBuffer;
+      if (bufferOverride) {
+        // Local file supplied by the user — no download phase at all.
+        buffer = bufferOverride;
+        setProgress(100);
+      } else {
+        setPhase("downloading");
+        buffer = await fetchWithProgress(distro.imageUrl, (fraction) => {
+          setProgress(fraction === null ? null : Math.round(fraction * 100));
+        });
+      }
 
       setPhase("booting");
+      const memoryMb = overrides?.memoryMb ?? distro.memoryMb;
       const emulator = new V86({
         wasm_path: V86_WASM_URL,
-        memory_size: distro.memoryMb * 1024 * 1024,
+        memory_size: memoryMb * 1024 * 1024,
         vga_memory_size: 4 * 1024 * 1024,
         screen_container: container,
         autostart: true,
@@ -128,7 +148,9 @@ export function useV86(distro: Distro | undefined): UseV86Result {
         err instanceof Error ? err.message : "Unexpected error while booting.",
       );
     }
-  }, [distro]);
+    // `overrides` is read at boot time; callers hold it stable while a
+    // session is live (the buffer must not change mid-boot).
+  }, [distro, overrides?.buffer, overrides?.memoryMb]);
 
   const start = useCallback(() => {
     if (!distro || distro.comingSoon || bootedRef.current) return;

@@ -5,7 +5,13 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { BOOTABLE_DISTROS, DISTROS } from "@/lib/distros";
 import { COURSE_OPTIONS } from "@/components/ProfileGate";
-import { BadgeCheck, Clock, LogOut, TerminalSquare } from "lucide-react";
+import {
+  BadgeCheck,
+  Clock,
+  Disc3,
+  LogOut,
+  TerminalSquare,
+} from "lucide-react";
 import { Link, useNavigate } from "react-router";
 
 const COURSE_LABELS: Record<string, string> = Object.fromEntries(
@@ -81,9 +87,17 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-          <Button asChild className="rounded-lg font-semibold">
-            <Link to="/run/buildroot">Power on</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="rounded-lg">
+              <Link to="/boot">
+                <Disc3 className="size-4" />
+                Boot your own ISO
+              </Link>
+            </Button>
+            <Button asChild className="rounded-lg font-semibold">
+              <Link to="/run/buildroot">Power on</Link>
+            </Button>
+          </div>
         </div>
 
         {/* Bootable now */}
