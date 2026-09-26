@@ -16,6 +16,14 @@ Semver `MAJOR.MINOR.PATCH`, applied on every update:
 The version lives in `package.json` and `public/manifest.webmanifest` and must
 be bumped as part of every change.
 
+## [0.3.1] — 2026-09-26
+
+### Fixed
+- The Fullscreen button no longer crashes when the app runs inside an
+  embedded/sandboxed preview frame: the browser refuses pointer lock there
+  (SecurityError), so the click now shows a friendly explanation instead of
+  throwing. Fullscreen still works when Nixtab is opened in its own tab.
+
 ## [0.3.0] — 2026-09-26
 
 ### Added

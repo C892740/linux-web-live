@@ -6,6 +6,7 @@ import {
   type V86Instance,
 } from "@/lib/v86";
 import type { Distro } from "@/lib/distros";
+import { toast } from "sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type BootPhase =
@@ -250,7 +251,16 @@ export function useV86(
     const emulator = emulatorRef.current as
       | (V86Instance & { screen_go_fullscreen?: () => void })
       | null;
-    emulator?.screen_go_fullscreen?.();
+    try {
+      emulator?.screen_go_fullscreen?.();
+    } catch (err) {
+      // Embedded/sandboxed preview frames refuse pointer lock and element
+      // fullscreen (SecurityError). Don't crash the click handler — explain.
+      console.warn("[v86] fullscreen unavailable:", err);
+      toast.info(
+        "Fullscreen is blocked in this embedded preview — open Nixtab in its own browser tab for fullscreen.",
+      );
+    }
   }, []);
 
   useEffect(() => {
