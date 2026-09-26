@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { ProfileGate } from "@/components/ProfileGate";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -14,6 +15,7 @@ const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const RunDistro = lazy(() => import("./pages/RunDistro.tsx"));
+const Onboarding = lazy(() => import("./pages/Onboarding.tsx"));
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
@@ -122,13 +124,16 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Landing />} />
               <Route
                 path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
+                element={<AuthPage redirectAfterAuth="/onboarding" />}
               />
+              <Route path="/onboarding" element={<Onboarding />} />
               <Route
                 path="/dashboard"
                 element={
                   <RequireAuth>
-                    <Dashboard />
+                    <ProfileGate>
+                      <Dashboard />
+                    </ProfileGate>
                   </RequireAuth>
                 }
               />

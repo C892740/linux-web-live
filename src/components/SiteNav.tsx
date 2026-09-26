@@ -4,41 +4,39 @@ import logo from "@/assets/logo.svg";
 import { TerminalSquare } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 
-/** Slim sticky site header shared by public pages. */
+/** Nixtab site header shared by public pages. */
 export function SiteNav() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link to="/" className="group flex items-center gap-2.5">
           <img
             src={logo}
-            alt="DistroTest logo"
-            className="size-8 rounded-lg ring-1 ring-foreground/10"
+            alt="Nixtab logo"
+            className="size-8 rounded-md"
           />
-          <span className="text-[15px] font-semibold tracking-tight">
-            DistroTest
-          </span>
+          <span className="text-[15px] font-bold tracking-tight">Nixtab</span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
-          <Button asChild variant="ghost" size="sm">
-            <a href="/#distros">Distros</a>
+          <Button asChild variant="ghost" size="sm" className="font-mono text-xs uppercase tracking-[0.1em]">
+            <a href="/#distros">Index</a>
           </Button>
-          <Button asChild variant="ghost" size="sm">
-            <a href="/#how">How it works</a>
+          <Button asChild variant="ghost" size="sm" className="font-mono text-xs uppercase tracking-[0.1em]">
+            <a href="/#how">How</a>
           </Button>
-          <Button asChild variant="ghost" size="sm">
+          <Button asChild variant="ghost" size="sm" className="font-mono text-xs uppercase tracking-[0.1em]">
             <a href="/#faq">FAQ</a>
           </Button>
         </nav>
 
         <div className="flex items-center gap-2">
           {!isLoading && isAuthenticated ? (
-            <Button size="sm" onClick={() => navigate("/dashboard")}>
-              My workspace
+            <Button size="sm" className="rounded-lg font-semibold" onClick={() => navigate("/dashboard")}>
+              Launchpad
             </Button>
           ) : (
             <>
@@ -46,13 +44,17 @@ export function SiteNav() {
                 asChild
                 variant="ghost"
                 size="sm"
-                className="hidden sm:inline-flex"
+                className="hidden font-mono text-xs uppercase tracking-[0.1em] sm:inline-flex"
               >
                 <Link to="/auth">Sign in</Link>
               </Button>
-              <Button size="sm" onClick={() => navigate("/#distros")}>
+              <Button
+                size="sm"
+                className="rounded-lg font-semibold shadow-block-primary"
+                onClick={() => navigate("/#distros")}
+              >
                 <TerminalSquare className="size-4" />
-                Launch a distro
+                Boot one
               </Button>
             </>
           )}

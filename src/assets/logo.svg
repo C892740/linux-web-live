@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 96.81 96.81"><rect width="96.81" height="96.81" rx="18"/><g fill="#fff"><rect x="24.67" y="24.67" width="47.47" height="11.87"/><rect x="24.67" y="36.54" width="11.87" height="35.61"/><rect x="40.06" y="39.98" width="23.74" height="11.87"/><rect x="40.06" y="51.85" width="11.87" height="20.3"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 96.81 96.81">
+  <!-- Nixtab mark: machine chassis, terminal caret, boot status dot -->
+  <rect width="96.81" height="96.81" rx="18"/>
+  <!-- boot bar (left rail, like a kernel progress meter) -->
+  <rect x="26" y="24.5" width="10" height="47.8" rx="2" fill="#fff"/>
+  <!-- terminal caret '>' -->
+  <path d="M44.5 24.5 L67.5 40.5 v15.8 L44.5 72.3 V58.9 L56.5 48.4 L44.5 37.9 Z" fill="#fff"/>
+  <!-- ready-light -->
+  <circle cx="70.8" cy="68.3" r="4.1" fill="#fff"/>
+</svg>

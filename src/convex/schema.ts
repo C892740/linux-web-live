@@ -34,6 +34,26 @@ const schema = defineSchema(
 
     // add other tables here
 
+    /**
+     * Per-user product profile. One row per user, keyed by userId.
+     *
+     * `course` records the subject picked during onboarding so the product
+     * can gate content per course: "IT" unlocks the Linux sandboxes, other
+     * subjects get a polite "nothing here yet" while the brand scales out
+     * (finance/business tools are planned).
+     */
+    profiles: defineTable({
+      userId: v.id("users"),
+      /** Subject/course picked during onboarding, e.g. "IT" or "Business". */
+      course: v.optional(v.string()),
+      /** Whether the user finished the post-sign-in course prompt. */
+      onboarded: v.boolean(),
+      /** Set when the signed-in email matches the college student pattern. */
+      verifiedStudent: v.optional(v.boolean()),
+      /** When the profile row was created (ms epoch). */
+      createdAt: v.number(),
+    }).index("by_user", ["userId"]),
+
     // tableName: defineTable({
     //   ...
     //   // table fields

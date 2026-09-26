@@ -1,11 +1,11 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
+  "name": "Nixtab — Linux sandboxes for IT students",
+  "short_name": "Nixtab",
+  "description": "Boot real Linux distros in a browser tab. Built for IT courses at Coventry College.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#f8f7f2",
+  "theme_color": "#22c55e",
   "icons": [
     {
       "src": "/logo.svg",

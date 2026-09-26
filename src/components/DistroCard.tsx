@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Distro } from "@/lib/distros";
 import { motion } from "framer-motion";
-import { ArrowRight, Clock, MonitorPlay } from "lucide-react";
+import { ArrowUpRight, Clock, MonitorPlay } from "lucide-react";
 import type { CSSProperties } from "react";
 import { Link } from "react-router";
 
@@ -11,7 +11,7 @@ interface DistroCardProps {
   index?: number;
 }
 
-/** Monogram tile built from the distro's accent color. */
+/** Monogram tile built from the distro's accent colour. */
 function DistroGlyph({ distro }: { distro: Distro }) {
   const initials = distro.name
     .split(" ")
@@ -22,10 +22,8 @@ function DistroGlyph({ distro }: { distro: Distro }) {
   return (
     <div
       aria-hidden
-      className="flex size-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-white shadow-sm"
-      style={{
-        background: `linear-gradient(135deg, ${distro.accent}, color-mix(in oklab, ${distro.accent} 70%, black))`,
-      }}
+      className="flex size-11 shrink-0 items-center justify-center rounded-md text-base font-bold text-white"
+      style={{ background: distro.accent }}
     >
       {initials}
     </div>
@@ -35,21 +33,23 @@ function DistroGlyph({ distro }: { distro: Distro }) {
 export function DistroCard({ distro, index = 0 }: DistroCardProps) {
   const inner = (
     <Card
-      className="group relative h-full gap-0 overflow-hidden border-border/80 bg-card py-0 shadow-layered transition-all duration-200 hover:-translate-y-0.5 hover:shadow-layered-lg"
+      className="group relative h-full gap-0 overflow-hidden rounded-lg border-border bg-card py-0 transition-all duration-150 hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-block"
       style={{ "--distro": distro.accent } as CSSProperties}
     >
       {/* Brand accent bar */}
       <div
         aria-hidden
-        className="h-1 w-full bg-(--distro) opacity-80 transition-opacity group-hover:opacity-100"
+        className="h-[3px] w-full bg-(--distro) opacity-90 transition-opacity group-hover:opacity-100"
       />
 
-      <CardContent className="flex h-full flex-col gap-4 p-5">
+      <CardContent className="flex h-full flex-col gap-3.5 p-5">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3.5">
+          <div className="flex items-center gap-3">
             <DistroGlyph distro={distro} />
             <div>
-              <h3 className="font-semibold tracking-tight">{distro.name}</h3>
+              <h3 className="font-semibold leading-tight tracking-tight">
+                {distro.name}
+              </h3>
               <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
                 {distro.tagline}
               </p>
@@ -58,7 +58,7 @@ export function DistroCard({ distro, index = 0 }: DistroCardProps) {
           {distro.comingSoon ? (
             <Badge
               variant="outline"
-              className="shrink-0 gap-1 border-border/80 text-muted-foreground"
+              className="shrink-0 gap-1 border-border font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
             >
               <Clock className="size-3" />
               Soon
@@ -66,9 +66,9 @@ export function DistroCard({ distro, index = 0 }: DistroCardProps) {
           ) : (
             <span
               aria-hidden
-              className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors group-hover:border-(--distro) group-hover:bg-(--distro) group-hover:text-white"
+              className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors group-hover:border-(--distro) group-hover:bg-(--distro) group-hover:text-white"
             >
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              <ArrowUpRight className="size-3.5" />
             </span>
           )}
         </div>
@@ -77,26 +77,22 @@ export function DistroCard({ distro, index = 0 }: DistroCardProps) {
           {distro.description}
         </p>
 
-        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
-          {distro.badges.map((badge) => (
-            <Badge
-              key={badge}
-              variant="secondary"
-              className="rounded-full bg-secondary/70 px-2.5 font-medium text-secondary-foreground/90"
-            >
-              {badge}
-            </Badge>
-          ))}
-        </div>
-
-        {!distro.comingSoon && (
-          <div className="flex items-center gap-2 border-t border-border/60 pt-3 text-[13px] text-muted-foreground">
-            <MonitorPlay className="size-4 shrink-0" style={{ color: distro.accent }} />
-            <span>
-              {distro.desktop} · {distro.memoryMb} MB RAM
-            </span>
+        {/* Mono spec strip — the registry feel */}
+        <div className="mt-auto space-y-2 border-t border-border pt-3 font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {distro.badges.map((badge) => (
+              <span key={badge}>{badge}</span>
+            ))}
           </div>
-        )}
+          {!distro.comingSoon && (
+            <div className="flex items-center gap-1.5">
+              <MonitorPlay className="size-3.5 text-(--distro)" />
+              <span>
+                {distro.desktop} · {distro.memoryMb} MB RAM
+              </span>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -106,13 +102,12 @@ export function DistroCard({ distro, index = 0 }: DistroCardProps) {
       initial={{ opacity: 0, y: 14 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.4, delay: Math.min(index * 0.06, 0.3) }}
+      transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.25) }}
       className="h-full"
     >
       {distro.comingSoon ? (
-        // Not clickable — there's nothing to boot yet. The FAQ on the
-        // landing page explains why these stay locked.
-        <div aria-label={`${distro.name} — coming soon`} className="h-full">
+        // Not clickable — there's nothing to boot yet. The FAQ explains why.
+        <div aria-label={`${distro.name} — coming soon`} className="h-full opacity-90">
           {inner}
         </div>
       ) : (

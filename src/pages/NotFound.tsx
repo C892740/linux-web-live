@@ -11,27 +11,27 @@ export default function NotFound() {
       transition={{ duration: 0.4 }}
       className="flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center"
     >
-      <p className="font-mono text-7xl font-bold tracking-tight text-foreground/10">
-        404
+      <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
+        kernel panic — route not found
       </p>
-      <h1 className="mt-2 text-2xl font-bold tracking-tight">
+      <h1 className="mt-3 text-3xl font-bold tracking-tight">
         This machine doesn't exist
       </h1>
       <p className="mt-2 max-w-sm text-muted-foreground">
         The page you asked for isn't part of the machine room. Head back and
-        pick a distro to boot instead.
+        boot something real instead.
       </p>
       <div className="mt-6 flex gap-3">
-        <Button asChild variant="outline">
+        <Button asChild variant="outline" className="rounded-lg">
           <Link to="/">
             <ArrowLeft className="size-4" />
-            Back to home
+            Back to the index
           </Link>
         </Button>
-        <Button asChild>
+        <Button asChild className="rounded-lg font-semibold">
           <Link to="/run/buildroot">
             <TerminalSquare className="size-4" />
-            Boot a distro
+            Boot a machine
           </Link>
         </Button>
       </div>
