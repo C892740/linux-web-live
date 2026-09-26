@@ -11,7 +11,11 @@ interface DistroCardProps {
   index?: number;
 }
 
-/** Monogram tile built from the distro's accent colour. */
+/**
+ * Logo tile: the OS's official mark when one exists (vendored asset, see
+ * src/assets/logos/ATTRIBUTION.md), otherwise a monogram tile built from the
+ * distro's accent colour.
+ */
 function DistroGlyph({ distro }: { distro: Distro }) {
   const initials = distro.name
     .split(" ")
@@ -22,10 +26,20 @@ function DistroGlyph({ distro }: { distro: Distro }) {
   return (
     <div
       aria-hidden
-      className="flex size-11 shrink-0 items-center justify-center rounded-md text-base font-bold text-white"
-      style={{ background: distro.accent }}
+      className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white"
+      style={distro.logo ? undefined : { background: distro.accent }}
     >
-      {initials}
+      {distro.logo ? (
+        <img
+          src={distro.logo}
+          alt=""
+          className="size-full object-contain p-1"
+          loading="lazy"
+          draggable={false}
+        />
+      ) : (
+        <span className="text-base font-bold text-white">{initials}</span>
+      )}
     </div>
   );
 }

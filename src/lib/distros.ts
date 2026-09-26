@@ -41,12 +41,22 @@ export interface Distro {
   desktop: string;
   accent: string;
   badges: string[];
+  /** Official OS logo asset, when the project publishes one. */
+  logo?: string;
   comingSoon?: boolean;
   /** Set for coming-soon entries — why it can't boot in v1. */
   comingSoonNote?: string;
 }
 
 const HF = "https://huggingface.co/datasets/affinityjeff96/v86-disk-images/resolve/main";
+
+// Official OS logos (see src/assets/logos/ATTRIBUTION.md for sources).
+import buildrootLogo from "@/assets/logos/buildroot.png";
+import dslLogo from "@/assets/logos/dsl.jpg";
+import linuxLiteLogo from "@/assets/logos/linux-lite.jpg";
+import lubuntuLogo from "@/assets/logos/lubuntu.svg";
+import tinycoreLogo from "@/assets/logos/tinycore.png";
+import zorinLogo from "@/assets/logos/zorin.svg";
 
 export const DISTROS: Distro[] = [
   {
@@ -64,6 +74,7 @@ export const DISTROS: Distro[] = [
     desktop: "Console",
     accent: "#0e7490",
     badges: ["9.6 MB", "Fastest boot", "Terminal"],
+    logo: buildrootLogo,
   },
   {
     id: "linux3",
@@ -96,6 +107,7 @@ export const DISTROS: Distro[] = [
     desktop: "FLTK",
     accent: "#0d9488",
     badges: ["19 MB", "Runs from RAM", "Graphical"],
+    logo: tinycoreLogo,
   },
   {
     id: "dsl",
@@ -112,6 +124,7 @@ export const DISTROS: Distro[] = [
     desktop: "JWM + FLTK",
     accent: "#7c3aed",
     badges: ["50 MB", "Full desktop", "Legendary"],
+    logo: dslLogo,
   },
   {
     id: "mobius",
@@ -144,6 +157,7 @@ export const DISTROS: Distro[] = [
     desktop: "Zorin Desktop (GNOME)",
     accent: "#0ea5e9",
     badges: ["~4 GB", "64-bit only"],
+    logo: zorinLogo,
     comingSoon: true,
     comingSoonNote:
       "Zorin OS only ships 64-bit images, and v86 emulates a 32-bit CPU — 64-bit kernels can't execute no matter how much RAM we give the machine. If Zorin ever publishes i386 builds (or we add a second 64-bit emulator), it lands here.",
@@ -163,6 +177,7 @@ export const DISTROS: Distro[] = [
     desktop: "Xfce",
     accent: "#64748b",
     badges: ["~2.3 GB", "64-bit only"],
+    logo: linuxLiteLogo,
     comingSoon: true,
     comingSoonNote:
       "Linux Lite is 64-bit only and ~2.3 GB. Browser streaming of images that size isn't practical in v1 — we're tracking smaller Xfce-based builds.",
@@ -182,6 +197,7 @@ export const DISTROS: Distro[] = [
     desktop: "LXQt",
     accent: "#2563eb",
     badges: ["~2.3 GB", "64-bit only"],
+    logo: lubuntuLogo,
     comingSoon: true,
     comingSoonNote:
       "Lubuntu dropped 32-bit images years ago. When a suitable 32-bit LXQt build exists, it'll land here.",

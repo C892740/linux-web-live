@@ -16,6 +16,15 @@ Semver `MAJOR.MINOR.PATCH`, applied on every update:
 The version lives in `package.json` and `public/manifest.webmanifest` and must
 be bumped as part of every change.
 
+## [0.2.0] — 2026-09-26
+
+### Added
+- Official OS logos in the machine index for every distro that publishes one:
+  Buildroot, Tiny Core Linux, Damn Small Linux, Zorin OS, Linux Lite, and
+  Lubuntu. Logos are vendored into `src/assets/logos/` with sources recorded
+  in `ATTRIBUTION.md`; entries without an official mark (Linux 3 Live demo
+  image, Mobius) keep the monogram tile.
+
 ## [0.1.0] — 2026-09-26
 
 Baseline version for the initial platform build.
