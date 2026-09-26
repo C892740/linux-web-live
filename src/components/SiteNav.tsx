@@ -5,6 +5,7 @@ import {
   indicatorTheme,
   useSystemStatus,
 } from "@/hooks/use-system-status";
+import { IdentityBadge } from "@/components/IdentityBadge";
 import logo from "@/assets/logo.svg";
 import { TerminalSquare } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -63,9 +64,7 @@ export function SiteNav() {
         <div className="flex items-center gap-2">
           <StatusChip />
           {!isLoading && isAuthenticated ? (
-            <Button size="sm" className="rounded-lg font-semibold" onClick={() => navigate("/dashboard")}>
-              Launchpad
-            </Button>
+            <IdentityBadge />
           ) : (
             <>
               <Button

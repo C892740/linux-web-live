@@ -1,6 +1,6 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { ensureCurrentUser, resolveCurrentUser } from "./identity";
 
 /**
  * The college's student email pattern:
@@ -23,15 +23,14 @@ export function isCoventryStudentEmail(
 export const get = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (userId === null) return null;
+    const user = await resolveCurrentUser(ctx);
+    if (!user) return null;
 
-    const user = await ctx.db.get(userId);
-    const verifiedStudent = isCoventryStudentEmail(user?.email ?? undefined);
+    const verifiedStudent = isCoventryStudentEmail(user.email ?? undefined);
 
     const existing = await ctx.db
       .query("profiles")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .first();
 
     if (!existing) {
@@ -47,13 +46,13 @@ export const get = query({
 });
 
 /**
- * Creates the profile row on first sign-in. Idempotent: returns the
- * existing row's id when one already exists.
+ * Creates the users row (if needed) and the profile row on first sign-in.
+ * Idempotent: returns the existing profile's id when one already exists.
  */
 export const ensure = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await ensureCurrentUser(ctx);
     if (userId === null) throw new Error("Not signed in.");
 
     const existing = await ctx.db
@@ -82,7 +81,7 @@ export const ensure = mutation({
 export const setCourse = mutation({
   args: { course: v.string() },
   handler: async (ctx, { course }) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await ensureCurrentUser(ctx);
     if (userId === null) throw new Error("Not signed in.");
 
     const user = await ctx.db.get(userId);
@@ -112,7 +111,7 @@ export const setCourse = mutation({
 export const resetOnboarding = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await ensureCurrentUser(ctx);
     if (userId === null) throw new Error("Not signed in.");
 
     const existing = await ctx.db

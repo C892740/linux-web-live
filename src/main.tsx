@@ -2,8 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ProfileGate } from "@/components/ProfileGate";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { AppProviders } from "@/providers/AppProviders";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -12,6 +11,7 @@ import "./index.css";
 // Lazy load route components for better code splitting
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
+const ClerkSignUpPage = lazy(() => import("./pages/ClerkSignUp.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const RunDistro = lazy(() => import("./pages/RunDistro.tsx"));
@@ -83,10 +83,6 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
-
-
-
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -110,14 +106,16 @@ function RouteSyncer() {
   return null;
 }
 
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
       <ToolbarErrorBoundary>
         <VlyToolbar />
       </ToolbarErrorBoundary>
-      <ConvexAuthProvider client={convex}>
+      {/* AppProviders picks the auth stack: Clerk + Convex when a Clerk
+          publishable key is configured, the built-in Convex Auth stack
+          otherwise. See src/providers/AppProviders.tsx. */}
+      <AppProviders>
         <BrowserRouter>
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
@@ -127,6 +125,7 @@ createRoot(document.getElementById("root")!).render(
                 path="/auth"
                 element={<AuthPage redirectAfterAuth="/onboarding" />}
               />
+              <Route path="/sign-up" element={<ClerkSignUpPage />} />
               <Route path="/onboarding" element={<Onboarding />} />
               <Route
                 path="/dashboard"
@@ -145,7 +144,7 @@ createRoot(document.getElementById("root")!).render(
           </Suspense>
         </BrowserRouter>
         <Toaster />
-      </ConvexAuthProvider>
+      </AppProviders>
     </RootErrorBoundary>
   </StrictMode>,
 );

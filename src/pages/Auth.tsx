@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/input-otp";
 
 import { useAuth } from "@/hooks/use-auth";
+import { isClerkEnabled, clerkAppearance } from "@/lib/clerk";
+import { SignIn } from "@clerk/clerk-react";
 import logo from "@/assets/logo.svg";
 import {
   ArrowRight,
@@ -55,13 +57,77 @@ function MicrosoftGlyph({ className }: { className?: string }) {
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(
     searchParams.get("returnTo"),
     redirectAfterAuth,
   );
+
+  // Clerk mode renders Clerk's themed <SignIn /> component; legacy mode keeps
+  // the built-in Convex Auth card. Both end up at the same `redirect`.
+  return isClerkEnabled ? (
+    <ClerkSignInScreen redirect={redirect} />
+  ) : (
+    <LegacyAuthScreen redirect={redirect} />
+  );
+}
+
+/**
+ * Clerk sign-in screen. The <SignIn /> component renders Clerk's UI (Social
+ * sign-in, email code, etc.) themed via clerkAppearance to match Nixtab;
+ * `routing="hash"` keeps it self-contained on this route.
+ */
+function ClerkSignInScreen({ redirect }: { redirect: string }) {
+  const navigate = useNavigate();
+  const { isLoading, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate(redirect, { replace: true });
+    }
+  }, [isLoading, isAuthenticated, navigate, redirect]);
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <div className="flex flex-1 items-center justify-center px-4 py-12">
+        <div className="flex w-full max-w-[400px] flex-col items-center">
+          <img
+            src={logo}
+            alt="Nixtab logo"
+            className="size-12 cursor-pointer rounded-lg"
+            onClick={() => navigate("/")}
+          />
+          <p className="mt-3 font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
+            Nixtab
+          </p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight">
+            Sign in to your machine index
+          </h1>
+
+          <div className="mt-8 w-full">
+            <SignIn
+              appearance={clerkAppearance}
+              routing="hash"
+              fallbackRedirectUrl={redirect}
+              signUpUrl="/sign-up"
+            />
+          </div>
+
+          <p className="mt-6 flex items-center gap-1.5 text-center text-xs text-muted-foreground">
+            <ShieldCheck className="size-3.5 text-primary" />
+            College sign-in via Microsoft 365 once Entra SSO is enabled in
+            Clerk
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Legacy (Convex Auth) sign-in card, unchanged behaviour. */
+function LegacyAuthScreen({ redirect }: { redirect: string }) {
+  const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState<"signIn" | { email: string }>("signIn");
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);

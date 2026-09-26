@@ -10,6 +10,17 @@ const freebuffIssuer =
 
 export default {
   providers: [
+    // ── Clerk activation (pending keys) ──────────────────────────────
+    // When CLERK_FRONTEND_API_URL is set on the deployment (Keys tab,
+    // value = Clerk Frontend API URL, e.g. https://verb-noun-00.clerk.accounts.dev),
+    // add this provider entry at the TOP of this array to accept Clerk
+    // session JWTs (aud is pre-mapped to "convex" by Clerk's integration):
+    //
+    //   { domain: process.env.CLERK_FRONTEND_API_URL!, applicationID: "convex" },
+    //
+    // Until then it must stay commented out: Convex rejects an auth config
+    // that references an env var which isn't set.
+    // ─────────────────────────────────────────────────────────────────
     // Standard Convex Auth provider for this project's own sign-in ("Get
     // Started" email/guest, see src/convex/auth.ts). The deployment
     // self-issues JWTs (iss = CONVEX_SITE_URL, no `kid` header) validated
