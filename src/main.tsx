@@ -17,6 +17,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const RunDistro = lazy(() => import("./pages/RunDistro.tsx"));
 const RunCustom = lazy(() => import("./pages/RunCustom.tsx"));
+const Docs = lazy(() => import("./pages/Docs.tsx"));
 const Onboarding = lazy(() => import("./pages/Onboarding.tsx"));
 
 // Simple loading fallback for route transitions
@@ -141,6 +142,7 @@ createRoot(document.getElementById("root")!).render(
                 />
                 <Route path="/run/:distroId" element={<RunDistro />} />
                 <Route path="/boot" element={<RunCustom />} />
+                <Route path="/docs" element={<Docs />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

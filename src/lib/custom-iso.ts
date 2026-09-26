@@ -63,6 +63,12 @@ export function planCustomBoot(file: File): CustomBootPlan {
 
   const warnings: string[] = [];
 
+  if (file.size > 250 * MB) {
+    warnings.push(
+      "Desktop ISOs this size run best with 512–768 MB of RAM — use the memory slider before powering on.",
+    );
+  }
+
   if (file.size > WARN_CUSTOM_BYTES) {
     warnings.push(
       "Large image — the whole file is read into this tab's memory and boot will be slow. Under 300 MB gives the best experience.",

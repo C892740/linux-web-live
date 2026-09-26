@@ -37,8 +37,9 @@ type Stage =
 
 export default function RunCustom() {
   const [stage, setStage] = useState<Stage>({ kind: "pick" });
-  const [memoryMb, setMemoryMb] = useState(256);
-  const [buffer, setBuffer] = useState<ArrayBuffer | null>(null);
+  // 512 MB default: full-desktop live ISOs (Puppy, DSL with apps open) are
+  // cramped at 256 MB and freezing under memory pressure looks like a bug.
+  const [memoryMb, setMemoryMb] = useState(512);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -55,7 +56,7 @@ export default function RunCustom() {
     reset,
     sendCtrlAltDelete,
     goFullscreen,
-  } = useV86(plan, { buffer, memoryMb });
+  } = useV86(plan, { file: stage.kind === "running" ? stage.file : null, memoryMb });
 
   const accept = useCallback((file: File) => {
     const result = planCustomBoot(file);
@@ -73,17 +74,10 @@ export default function RunCustom() {
 
   const handleFile = (file: File | undefined) => {
     if (!file) return;
-    setBuffer(null);
-    setStage({ kind: "pick" });
-    // Read fully into memory, then flip to "ready".
-    const reader = new FileReader();
-    reader.onload = () => {
-      setBuffer(reader.result as ArrayBuffer);
-      accept(file);
-    };
-    reader.onerror = () =>
-      setStage({ kind: "rejected", message: "Could not read that file." });
-    reader.readAsArrayBuffer(file);
+    // No FileReader pass: the File object is handed to v86, which lazy-reads
+    // it from disk in 4 MB chunks as the guest OS touches it. Booting a
+    // 300 MB–2 GB ISO is instant instead of a long, memory-hungry read.
+    accept(file);
   };
 
   const powerOn = () => {
@@ -94,7 +88,6 @@ export default function RunCustom() {
 
   const powerOff = () => {
     reset();
-    setBuffer(null);
     setStage({ kind: "pick" });
   };
 

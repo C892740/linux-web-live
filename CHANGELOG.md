@@ -16,6 +16,38 @@ Semver `MAJOR.MINOR.PATCH`, applied on every update:
 The version lives in `package.json` and `public/manifest.webmanifest` and must
 be bumped as part of every change.
 
+## [1.0.0] — 2026-09-26
+
+First major release: the platform is stable, fast, and documented.
+
+### Added
+- Documentation page (`/docs`): how the emulation works, what Nixtab is for,
+  capabilities and honest limits, a machine-index table with boot links,
+  hands-on session tips, and illustrated session showcases. Linked from the
+  site navigation.
+- True-resolution fullscreen: the emulated display scales to fill the
+  monitor at the guest's native resolution (aspect-preserving), refitting on
+  fullscreen change, window resize, and when the desktop first appears.
+- Freeze watchdog: when the guest stops producing video output for 20s while
+  still running (typically guest RAM exhaustion), the UI warns with recovery
+  advice instead of leaving a frozen screen.
+- RAM guidance for large desktop ISOs on /boot (slider defaults and inline
+  advice tuned to image size).
+
+### Changed
+- **Boot performance overhaul.** Local ISOs are no longer read fully into
+  memory before boot: v86 now lazy-reads them from disk in chunks on demand,
+  so 300 MB–2 GB images start booting immediately instead of after a long,
+  memory-hungry read. Catalog images are cached across resets/reboots.
+- ACPI is exposed to the guest, avoiding long hardware-probe stalls on
+  modern kernels (Puppy's 6.x series, etc.).
+- Fullscreen no longer depends on pointer lock: works in embedded frames
+  and uses a custom scaler instead of v86's hardcoded behaviour.
+
+### Fixed
+- Timer leaks: boot watchdogs and polls are now cleaned up on reset and
+  navigation, so sessions can't leave orphaned timers behind.
+
 ## [0.3.1] — 2026-09-26
 
 ### Fixed

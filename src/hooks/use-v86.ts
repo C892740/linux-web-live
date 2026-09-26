@@ -63,15 +63,48 @@ async function fetchWithProgress(
 /** Ctrl+Alt+Del as i8042 make/break scancodes. */
 const CTRL_ALT_DEL_SCANCODES = [0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d];
 
+/**
+ * Cheap visual fingerprint of the emulated canvas: downsample to 16×16 and
+ * hash the RGB bytes. Detects "is the picture actually changing" without
+ * reading the full framebuffer.
+ */
+function canvasFingerprint(canvas: HTMLCanvasElement): string {
+  try {
+    const sample = document.createElement("canvas");
+    sample.width = 16;
+    sample.height = 16;
+    const ctx = sample.getContext("2d");
+    if (!ctx) return "";
+    ctx.drawImage(canvas, 0, 0, 16, 16);
+    const data = ctx.getImageData(0, 0, 16, 16).data;
+    let hash = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      hash = ((hash * 31 + data[i] + data[i + 1] + data[i + 2]) | 0) + 1;
+    }
+    return String(hash);
+  } catch {
+    return "";
+  }
+}
+
 export interface UseV86Overrides {
-  /** Pre-loaded image bytes (e.g. a user's own ISO read via FileReader).
-   *  When set, the hook skips its own fetch entirely. */
-  buffer?: ArrayBuffer | null;
+  /** Local image file (e.g. a user's own ISO). Passed to v86 as a LAZY
+   *  File-backed buffer — the OS is read from disk in chunks on demand
+   *  instead of being loaded into tab memory, so multi-GB ISOs boot without
+   *  freezing or crashing the tab. */
+  file?: File | null;
   /** Overrides the distro's default RAM for this session. */
   memoryMb?: number;
   /** Pre-fetched BIOS images from a previous session (skip re-download). */
   biosBuffers?: { bios?: ArrayBuffer; vgaBios?: ArrayBuffer } | null;
 }
+
+/**
+ * Download cache for catalog images — a reset/reboot reuses the bytes
+ * instead of refetching (the UI has always promised "reboots reuse the
+ * cache"; now it actually does). Keyed by distro id.
+ */
+const imageCache = new Map<string, ArrayBuffer>();
 
 /**
  * Boots a distro in v86, exposing UI-facing phase/progress/error state.
@@ -87,6 +120,16 @@ export function useV86(
   const containerRef = useRef<HTMLDivElement | null>(null);
   const emulatorRef = useRef<V86Instance | null>(null);
   const bootedRef = useRef(false);
+  /** All boot-scoped timer ids (text poll, stuck timer, freeze watchdog). */
+  const timersRef = useRef<number[]>([]);
+
+  const clearTimers = useCallback(() => {
+    for (const id of timersRef.current) {
+      window.clearInterval(id);
+      window.clearTimeout(id);
+    }
+    timersRef.current = [];
+  }, []);
 
   const [phase, setPhase] = useState<BootPhase>("idle");
   const [progress, setProgress] = useState<number | null>(null);
@@ -131,17 +174,31 @@ export function useV86(
         vgaBiosBuffer = vgaBios;
       }
 
-      const bufferOverride = overrides?.buffer;
-      let buffer: ArrayBuffer;
-      if (bufferOverride) {
-        // Local file supplied by the user — no download phase at all.
-        buffer = bufferOverride;
+      setPhase("downloading");
+      let bootBuffer: ArrayBuffer | File;
+      let bootAsync = false;
+
+      const localFile = overrides?.file;
+      if (localFile) {
+        // LAZY local-file boot: v86 reads the image from disk in chunks as
+        // the guest touches it. No multi-GB ArrayBuffer, no long read delay,
+        // no GC pressure — this is what keeps big live ISOs (Puppy etc.)
+        // responsive instead of freezing the tab. v86 forces synchronous
+        // buffers for floppies and kernel/initrd; honour that.
+        bootBuffer = localFile;
+        bootAsync = distro.boot === "cdrom" || distro.boot === "hda";
         setProgress(100);
       } else {
-        setPhase("downloading");
-        buffer = await fetchWithProgress(distro.imageUrl, (fraction) => {
-          setProgress(fraction === null ? null : Math.round(fraction * 100));
-        });
+        const cached = imageCache.get(distro.id);
+        if (cached) {
+          bootBuffer = cached;
+          setProgress(100);
+        } else {
+          bootBuffer = await fetchWithProgress(distro.imageUrl, (fraction) => {
+            setProgress(fraction === null ? null : Math.round(fraction * 100));
+          });
+          imageCache.set(distro.id, bootBuffer);
+        }
       }
 
       setPhase("booting");
@@ -153,10 +210,13 @@ export function useV86(
         screen_container: container,
         autostart: true,
         disable_speaker: true,
+        // Modern guest kernels (Puppy's 6.x, etc.) probe for ACPI; exposing
+        // it avoids long stalls and hardware-detection timeouts.
+        acpi: true,
         bios: { buffer: biosBuffer },
         vga_bios: { buffer: vgaBiosBuffer },
-        [distro.boot]: { buffer },
-      });
+        [distro.boot]: { buffer: bootBuffer, async: bootAsync },
+      } as Record<string, unknown>);
       emulatorRef.current = emulator;
 
       // Boot detection that reads REAL machine signals instead of DOM:
@@ -174,6 +234,7 @@ export function useV86(
       };
 
       const poll = window.setInterval(() => {
+        timersRef.current.push(poll);
         const emu = emulatorRef.current;
         if (!emu) return;
         if (typeof emu.get_text_screen === "function") {
@@ -203,6 +264,7 @@ export function useV86(
       });
 
       stuckTimer.id = window.setTimeout(() => {
+        timersRef.current.push(stuckTimer.id!);
         window.clearInterval(poll);
         observer.disconnect();
         setPhase((p) => {
@@ -213,6 +275,40 @@ export function useV86(
           return "error";
         });
       }, 18_000);
+
+      // Freeze watchdog: a healthy guest repaints continuously. Sample the
+      // actual screen surface — text-buffer contents in text mode, canvas
+      // pixels in graphics mode — and warn (non-destructively) when nothing
+      // has changed for 20s while the CPU claims to be running. Heavy apps
+      // exhausting guest RAM look exactly like this.
+      let surfaceFingerprint = "";
+      let lastChange = Date.now();
+      const renderWatch = window.setInterval(() => {
+        timersRef.current.push(renderWatch);
+        const emu = emulatorRef.current;
+        if (!emu || !settled) return;
+        try {
+          const canvas = container.querySelector("canvas");
+          const graphical = canvas && canvas.style.display !== "none";
+          const fp = graphical
+            ? `c:${canvasFingerprint(canvas)}`
+            : `t:${typeof emu.get_text_screen === "function" ? emu.get_text_screen().join("\n") : ""}`;
+          if (fp !== surfaceFingerprint) {
+            surfaceFingerprint = fp;
+            lastChange = Date.now();
+            return;
+          }
+          if (emu.is_running?.() && Date.now() - lastChange > 20_000) {
+            window.clearInterval(renderWatch);
+            toast.warning(
+              "The guest looks frozen — it may have run out of memory. Try Reset, or reboot with more RAM or a lighter image.",
+              { duration: 10_000 },
+            );
+          }
+        } catch {
+          /* screen surface unavailable — ignore this tick */
+        }
+      }, 5_000);
     } catch (err) {
       emulatorRef.current?.destroy();
       emulatorRef.current = null;
@@ -223,8 +319,8 @@ export function useV86(
       );
     }
     // `overrides` is read at boot time; callers hold it stable while a
-    // session is live (the buffer must not change mid-boot).
-  }, [distro, overrides?.buffer, overrides?.memoryMb, overrides?.biosBuffers]);
+    // session is live (the image must not change mid-boot).
+  }, [distro, overrides?.file, overrides?.memoryMb, overrides?.biosBuffers]);
 
   const start = useCallback(() => {
     if (!distro || distro.comingSoon || bootedRef.current) return;
@@ -237,39 +333,105 @@ export function useV86(
       emulatorRef.current.destroy();
       emulatorRef.current = null;
     }
+    clearTimers();
     bootedRef.current = false;
     setPhase("idle");
     setProgress(null);
     setError(null);
-  }, []);
+  }, [clearTimers]);
 
   const sendCtrlAltDelete = useCallback(() => {
     emulatorRef.current?.keyboard_send_scancodes?.(CTRL_ALT_DEL_SCANCODES);
   }, []);
 
   const goFullscreen = useCallback(() => {
-    const emulator = emulatorRef.current as
-      | (V86Instance & { screen_go_fullscreen?: () => void })
-      | null;
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Custom fullscreen instead of v86's screen_go_fullscreen(): that one
+    // hard-requires pointer lock, which sandboxed/embedded frames refuse
+    // (SecurityError crash). Plain element fullscreen + our own scaling
+    // gives the same result without the hard dependency.
+    const request =
+      container.requestFullscreen?.bind(container) ??
+      (container as Element & { webkitRequestFullscreen?: () => void })
+        .webkitRequestFullscreen?.bind(container);
+
+    if (!request) {
+      toast.info(
+        "Fullscreen isn't supported by this browser frame — open Nixtab in its own browser tab.",
+      );
+      return;
+    }
+
     try {
-      emulator?.screen_go_fullscreen?.();
-    } catch (err) {
-      // Embedded/sandboxed preview frames refuse pointer lock and element
-      // fullscreen (SecurityError). Don't crash the click handler — explain.
-      console.warn("[v86] fullscreen unavailable:", err);
+      const result = request() as unknown as Promise<void> | undefined;
+      result?.catch?.(() => {
+        toast.info(
+          "Fullscreen is blocked in this embedded preview — open Nixtab in its own browser tab for fullscreen.",
+        );
+      });
+    } catch {
       toast.info(
         "Fullscreen is blocked in this embedded preview — open Nixtab in its own browser tab for fullscreen.",
       );
     }
   }, []);
 
+  /**
+   * Scale the emulated display to fill the available surface (the browser
+   * viewport in fullscreen, the machine frame otherwise) at the guest's
+   * native resolution — integer-preserving aspect, no blur.
+   */
+  const applyDisplayScale = useCallback(() => {
+    const emu = emulatorRef.current;
+    const container = containerRef.current;
+    if (!emu?.screen_set_scale || !container) return;
+
+    const canvas = container.querySelector("canvas");
+    const graphical = canvas && canvas.style.display !== "none";
+    // Text mode is 720×400 (80×25 at 9×16); graphics mode uses the canvas's
+    // native framebuffer size.
+    const guestW = graphical && canvas ? canvas.width : 720;
+    const guestH = graphical && canvas ? canvas.height : 400;
+    if (!guestW || !guestH) return;
+
+    const availW = container.clientWidth;
+    const availH = container.clientHeight;
+    const scale = Math.min(availW / guestW, availH / guestH);
+    if (scale > 0 && Number.isFinite(scale)) {
+      emu.screen_set_scale(scale, scale);
+    }
+  }, []);
+
+  // Re-fit the display whenever the surface changes: entering/leaving
+  // fullscreen, window resizes, or first reaching a running desktop.
+  useEffect(() => {
+    const refit = () =>
+      window.setTimeout(applyDisplayScale, 150); // let layout settle
+    document.addEventListener("fullscreenchange", refit);
+    window.addEventListener("resize", refit);
+    return () => {
+      document.removeEventListener("fullscreenchange", refit);
+      window.removeEventListener("resize", refit);
+    };
+  }, [applyDisplayScale]);
+
+  useEffect(() => {
+    if (phase === "running") {
+      const t = window.setTimeout(applyDisplayScale, 250);
+      return () => window.clearTimeout(t);
+    }
+  }, [phase, applyDisplayScale]);
+
   useEffect(() => {
     return () => {
+      clearTimers();
       emulatorRef.current?.destroy();
       emulatorRef.current = null;
       bootedRef.current = false;
     };
-  }, []);
+  }, [clearTimers]);
 
   return {
     containerRef,

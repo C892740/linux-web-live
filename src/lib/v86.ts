@@ -39,6 +39,10 @@ export interface V86Instance {
   stop?(): void;
   /** Current text-mode screen contents (v86 screen adapter). */
   get_text_screen?(): string[];
+  /** True while the emulated CPU is executing. */
+  is_running?(): boolean;
+  /** Set the display scale (x, y multipliers). */
+  screen_set_scale?(x: number, y: number): void;
 }
 
 /**

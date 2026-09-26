@@ -60,6 +60,9 @@ export function SiteNav() {
           <Button asChild variant="ghost" size="sm" className="font-mono text-xs uppercase tracking-[0.1em]">
             <a href="/#faq">FAQ</a>
           </Button>
+          <Button asChild variant="ghost" size="sm" className="font-mono text-xs uppercase tracking-[0.1em]">
+            <Link to="/docs">Docs</Link>
+          </Button>
         </nav>
 
         <div className="flex items-center gap-2">
