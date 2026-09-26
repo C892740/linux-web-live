@@ -15,6 +15,15 @@ const CDN = `https://cdn.jsdelivr.net/npm/v86@${V86_VERSION}`;
 
 export const V86_WASM_URL = `${CDN}/build/v86.wasm`;
 
+/**
+ * The npm tarball ships without BIOS binaries (seabios.bin / vgabios.bin are
+ * gitignored upstream), so they're fetched from the project's GitHub master
+ * branch via jsDelivr — same CORS guarantee, pinned to the same project.
+ */
+const BIOS_CDN = `https://cdn.jsdelivr.net/gh/copy/v86@master/bios`;
+export const SEABIOS_URL = `${BIOS_CDN}/seabios.bin`;
+export const VGABIOS_URL = `${BIOS_CDN}/vgabios.bin`;
+
 let loadPromise: Promise<V86Constructor> | null = null;
 
 /** Minimal shape of the v86 constructor we rely on (full type in vite-env.d.ts). */
@@ -28,6 +37,8 @@ export interface V86Instance {
   serial0_send?(text: string): void;
   restart?(): void;
   stop?(): void;
+  /** Current text-mode screen contents (v86 screen adapter). */
+  get_text_screen?(): string[];
 }
 
 /**

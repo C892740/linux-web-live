@@ -16,8 +16,9 @@
  * image from the browser before booting.
  *
  * Popular distros like Zorin OS, Linux Lite and Lubuntu are listed as
- * "coming soon": they ship 64-bit-only installers far too large for v86's
- * 32-bit emulator and browser streaming, so v1 can't boot them honestly.
+ * "coming soon": they ship 64-bit-only installers, and v86 emulates a 32-bit
+ * (i386) CPU that cannot execute 64-bit kernels — a hard architecture limit
+ * of the emulator, not a size limit we can tune our way out of.
  */
 
 export type BootMedia = "cdrom" | "kernel" | "floppy" | "hda";
@@ -145,7 +146,7 @@ export const DISTROS: Distro[] = [
     badges: ["~4 GB", "64-bit only"],
     comingSoon: true,
     comingSoonNote:
-      "Zorin OS ships 64-bit installers several gigabytes in size. v86 emulates 32-bit x86 only and streams small images into a browser tab, so it can't boot Zorin yet.",
+      "Zorin OS only ships 64-bit images, and v86 emulates a 32-bit CPU — 64-bit kernels can't execute no matter how much RAM we give the machine. If Zorin ever publishes i386 builds (or we add a second 64-bit emulator), it lands here.",
   },
   {
     id: "linuxlite",

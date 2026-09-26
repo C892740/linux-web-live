@@ -299,7 +299,7 @@ export default function RunCustom() {
           </span>
           <span className="font-mono text-xs uppercase tracking-[0.1em] text-muted-foreground">
             .iso · .img · .bin · floppy &amp; raw disk images · max{" "}
-            {(MAX_CUSTOM_BYTES / MB / 1024).toFixed(1)} GB
+            {(MAX_CUSTOM_BYTES / MB / 1024).toFixed(0)} GB
           </span>
         </label>
 
@@ -389,8 +389,8 @@ export default function RunCustom() {
               Good candidates
             </h2>
             <ul className="mt-2.5 space-y-1.5 text-sm text-muted-foreground">
-              <li>· Tiny Core, Damn Small Linux, Buildroot</li>
-              <li>· 32-bit builds of Alpine / antiX / Puppy</li>
+              <li>· Tiny Core, DSL, Buildroot, 4MLinux (all 32-bit)</li>
+              <li>· i386 builds of Alpine, antiX, Puppy, Debian</li>
               <li>· Floppy-based retro OS demos</li>
             </ul>
           </div>
@@ -399,9 +399,8 @@ export default function RunCustom() {
               Won't boot here
             </h2>
             <ul className="mt-2.5 space-y-1.5 text-sm text-muted-foreground">
-              <li>· Zorin OS Core 17 (64-bit only)</li>
-              <li>· Lubuntu, Linux Lite, Mint (64-bit only)</li>
-              <li>· Anything over {(MAX_CUSTOM_BYTES / MB / 1024).toFixed(1)} GB</li>
+              <li>· 64-bit-only ISOs (Zorin Core, Lubuntu, Mint — the emulator is 32-bit)</li>
+              <li>· Anything over {(MAX_CUSTOM_BYTES / MB / 1024).toFixed(0)} GB (browser memory ceiling)</li>
             </ul>
           </div>
         </div>

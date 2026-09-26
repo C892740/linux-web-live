@@ -1,4 +1,10 @@
-import { loadV86, V86_WASM_URL, type V86Instance } from "@/lib/v86";
+import {
+  loadV86,
+  V86_WASM_URL,
+  SEABIOS_URL,
+  VGABIOS_URL,
+  type V86Instance,
+} from "@/lib/v86";
 import type { Distro } from "@/lib/distros";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -62,6 +68,8 @@ export interface UseV86Overrides {
   buffer?: ArrayBuffer | null;
   /** Overrides the distro's default RAM for this session. */
   memoryMb?: number;
+  /** Pre-fetched BIOS images from a previous session (skip re-download). */
+  biosBuffers?: { bios?: ArrayBuffer; vgaBios?: ArrayBuffer } | null;
 }
 
 /**
@@ -95,6 +103,33 @@ export function useV86(
       const container = containerRef.current;
       if (!container) throw new Error("Screen container is missing.");
 
+      // v86's npm package ships without the BIOS binaries (seabios.bin and
+      // vgabios.bin are .gitignored upstream and absent from the tarball).
+      // Without a real VGA BIOS the machine starts with an uninitialised
+      // display — the guest runs headless and the screen stays black — so we
+      // fetch both from a CORS-enabled mirror and pass them as buffers.
+      const biosOverride = overrides?.biosBuffers;
+      let biosBuffer: ArrayBuffer | undefined;
+      let vgaBiosBuffer: ArrayBuffer | undefined;
+      if (biosOverride?.bios && biosOverride?.vgaBios) {
+        biosBuffer = biosOverride.bios;
+        vgaBiosBuffer = biosOverride.vgaBios;
+      } else {
+        const [bios, vgaBios] = await Promise.all([
+          fetch(SEABIOS_URL).then((r) => {
+            if (!r.ok) throw new Error(`BIOS fetch failed (HTTP ${r.status}).`);
+            return r.arrayBuffer();
+          }),
+          fetch(VGABIOS_URL).then((r) => {
+            if (!r.ok)
+              throw new Error(`VGA BIOS fetch failed (HTTP ${r.status}).`);
+            return r.arrayBuffer();
+          }),
+        ]);
+        biosBuffer = bios;
+        vgaBiosBuffer = vgaBios;
+      }
+
       const bufferOverride = overrides?.buffer;
       let buffer: ArrayBuffer;
       if (bufferOverride) {
@@ -113,20 +148,50 @@ export function useV86(
       const emulator = new V86({
         wasm_path: V86_WASM_URL,
         memory_size: memoryMb * 1024 * 1024,
-        vga_memory_size: 4 * 1024 * 1024,
+        vga_memory_size: 8 * 1024 * 1024,
         screen_container: container,
         autostart: true,
         disable_speaker: true,
+        bios: { buffer: biosBuffer },
+        vga_bios: { buffer: vgaBiosBuffer },
         [distro.boot]: { buffer },
       });
       emulatorRef.current = emulator;
 
-      // v86 toggles style.display between the text div and the canvas as the
-      // guest switches video modes. The first toggle means the machine is
-      // rendering — a 10s fallback keeps the UI unstuck either way.
-      const observer = new MutationObserver(() => {
+      // Boot detection that reads REAL machine signals instead of DOM:
+      //  - text mode: get_text_screen() returns non-blank content once the
+      //    BIOS/guest has written to the VGA text buffer
+      //  - graphics mode: v86 flips text div hidden / canvas visible
+      //  - 18s with zero video output → clear error explaining likely causes
+      let settled = false;
+      const stuckTimer = { id: undefined as number | undefined };
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        if (stuckTimer.id !== undefined) window.clearTimeout(stuckTimer.id);
         setPhase("running");
+      };
+
+      const poll = window.setInterval(() => {
+        const emu = emulatorRef.current;
+        if (!emu) return;
+        if (typeof emu.get_text_screen === "function") {
+          try {
+            const screen = emu.get_text_screen();
+            if (screen.some((row) => row.trim().length > 0)) {
+              window.clearInterval(poll);
+              settle();
+            }
+          } catch {
+            // screen adapter not ready yet — keep polling
+          }
+        }
+      }, 500);
+
+      const observer = new MutationObserver(() => {
+        settle();
         observer.disconnect();
+        window.clearInterval(poll);
       });
       observer.observe(container, {
         subtree: true,
@@ -135,10 +200,18 @@ export function useV86(
         childList: true,
         characterData: true,
       });
-      window.setTimeout(() => {
-        setPhase((p) => (p === "booting" ? "running" : p));
+
+      stuckTimer.id = window.setTimeout(() => {
+        window.clearInterval(poll);
         observer.disconnect();
-      }, 10_000);
+        setPhase((p) => {
+          if (p !== "booting") return p;
+          setError(
+            "No video output was detected. The guest either isn't bootable in a 32-bit emulator (64-bit-only ISOs behave exactly like this) or the BIOS found no bootable device. Try a 32-bit build or a different image.",
+          );
+          return "error";
+        });
+      }, 18_000);
     } catch (err) {
       emulatorRef.current?.destroy();
       emulatorRef.current = null;
@@ -150,7 +223,7 @@ export function useV86(
     }
     // `overrides` is read at boot time; callers hold it stable while a
     // session is live (the buffer must not change mid-boot).
-  }, [distro, overrides?.buffer, overrides?.memoryMb]);
+  }, [distro, overrides?.buffer, overrides?.memoryMb, overrides?.biosBuffers]);
 
   const start = useCallback(() => {
     if (!distro || distro.comingSoon || bootedRef.current) return;
