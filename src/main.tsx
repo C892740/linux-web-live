@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "next-themes";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ProfileGate } from "@/components/ProfileGate";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
@@ -115,36 +116,38 @@ createRoot(document.getElementById("root")!).render(
       {/* AppProviders picks the auth stack: Clerk + Convex when a Clerk
           publishable key is configured, the built-in Convex Auth stack
           otherwise. See src/providers/AppProviders.tsx. */}
-      <AppProviders>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route
-                path="/auth"
-                element={<AuthPage redirectAfterAuth="/onboarding" />}
-              />
-              <Route path="/sign-up" element={<ClerkSignUpPage />} />
-              <Route path="/onboarding" element={<Onboarding />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <RequireAuth>
-                    <ProfileGate>
-                      <Dashboard />
-                    </ProfileGate>
-                  </RequireAuth>
-                }
-              />
-              <Route path="/run/:distroId" element={<RunDistro />} />
-              <Route path="/boot" element={<RunCustom />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-        <Toaster />
-      </AppProviders>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <AppProviders>
+          <BrowserRouter>
+            <RouteSyncer />
+            <Suspense fallback={<RouteLoading />}>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route
+                  path="/auth"
+                  element={<AuthPage redirectAfterAuth="/onboarding" />}
+                />
+                <Route path="/sign-up" element={<ClerkSignUpPage />} />
+                <Route path="/onboarding" element={<Onboarding />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <RequireAuth>
+                      <ProfileGate>
+                        <Dashboard />
+                      </ProfileGate>
+                    </RequireAuth>
+                  }
+                />
+                <Route path="/run/:distroId" element={<RunDistro />} />
+                <Route path="/boot" element={<RunCustom />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+          <Toaster />
+        </AppProviders>
+      </ThemeProvider>
     </RootErrorBoundary>
   </StrictMode>,
 );

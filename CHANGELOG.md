@@ -16,6 +16,15 @@ Semver `MAJOR.MINOR.PATCH`, applied on every update:
 The version lives in `package.json` and `public/manifest.webmanifest` and must
 be bumped as part of every change.
 
+## [0.3.0] — 2026-09-26
+
+### Added
+- Dark mode. Light / Dark / System toggle in the site navigation (every page
+  with the shared nav), powered by `next-themes` with the `dark` class on
+  `<html>`; defaults to following the OS setting. All pages render from the
+  existing dark token set, so dashboards, machine sessions and auth screens
+  switch cleanly. Toast notifications follow the active theme.
+
 ## [0.2.0] — 2026-09-26
 
 ### Added

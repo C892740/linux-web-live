@@ -6,6 +6,7 @@ import {
   useSystemStatus,
 } from "@/hooks/use-system-status";
 import { IdentityBadge } from "@/components/IdentityBadge";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import logo from "@/assets/logo.svg";
 import { TerminalSquare } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -63,6 +64,7 @@ export function SiteNav() {
 
         <div className="flex items-center gap-2">
           <StatusChip />
+          <ThemeToggle />
           {!isLoading && isAuthenticated ? (
             <IdentityBadge />
           ) : (
