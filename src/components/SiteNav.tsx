@@ -1,8 +1,35 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  indicatorLabel,
+  indicatorTheme,
+  useSystemStatus,
+} from "@/hooks/use-system-status";
 import logo from "@/assets/logo.svg";
 import { TerminalSquare } from "lucide-react";
 import { Link, useNavigate } from "react-router";
+
+/** Live status tick from our Statuspage page; quiet when unset/unreachable. */
+function StatusChip() {
+  const status = useSystemStatus();
+  if (!status) return null;
+  const theme = indicatorTheme(status.status.indicator);
+
+  return (
+    <a
+      href={status.page.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="hidden items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors hover:border-primary/50 hover:bg-primary/5 lg:inline-flex"
+      title={status.status.description}
+    >
+      <span
+        className={`size-2 rounded-full ${theme.dot} ${theme.pulse ? "tick-pulse" : ""}`}
+      />
+      <span className={theme.label}>{indicatorLabel(status.status.indicator)}</span>
+    </a>
+  );
+}
 
 /** Nixtab site header shared by public pages. */
 export function SiteNav() {
@@ -34,6 +61,7 @@ export function SiteNav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <StatusChip />
           {!isLoading && isAuthenticated ? (
             <Button size="sm" className="rounded-lg font-semibold" onClick={() => navigate("/dashboard")}>
               Launchpad

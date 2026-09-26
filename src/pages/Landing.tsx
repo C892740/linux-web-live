@@ -10,6 +10,12 @@ import {
 } from "@/components/ui/accordion";
 import { BOOTABLE_DISTROS, DISTROS } from "@/lib/distros";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  indicatorLabel,
+  indicatorTheme,
+  useSystemStatus,
+} from "@/hooks/use-system-status";
+import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -65,6 +71,113 @@ function HeroTerminal() {
           <span className="text-emerald-400">tc@box:~$</span>
           <span className="caret-blink text-emerald-400">▊</span>
         </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Footer status readout — live from the platform's Statuspage page. Shows the
+ * overall indicator, per-component ticks, and any open incidents/maintenance.
+ */
+function SystemStatusPanel() {
+  const status = useSystemStatus();
+
+  if (status === null) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-4 pb-6 sm:px-6">
+        <div className="h-[72px] animate-pulse rounded-lg border border-border bg-secondary/40" />
+      </div>
+    );
+  }
+
+  if (!status) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-4 pb-6 sm:px-6">
+        <div className="flex items-center gap-2.5 rounded-lg border border-dashed border-border px-4 py-3.5 font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
+          <span className="size-2 rounded-full bg-muted-foreground/40" />
+          Status feed not wired up yet
+        </div>
+      </div>
+    );
+  }
+
+  const theme = indicatorTheme(status.status.indicator);
+  const degraded = status.status.indicator !== "none";
+  const trouble = [...status.incidents, ...status.maintenances];
+
+  return (
+    <div className="mx-auto w-full max-w-6xl px-4 pb-6 sm:px-6">
+      <div className="rounded-lg border border-border bg-card p-4 shadow-layered sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`size-2.5 rounded-full ${theme.dot} ${theme.pulse ? "tick-pulse" : ""}`}
+            />
+            <p className="font-mono text-xs uppercase tracking-[0.14em]">
+              System status —{" "}
+              <span className={theme.label}>
+                {indicatorLabel(status.status.indicator)}
+              </span>
+            </p>
+          </div>
+          <a
+            href={status.page.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-primary hover:underline"
+          >
+            {status.page.name || "Status page"}
+            <ArrowUpRight className="size-3.5" />
+          </a>
+        </div>
+
+        {status.components.length > 0 && (
+          <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5">
+            {status.components.map((component) => {
+              const ok = component.status === "operational";
+              return (
+                <li
+                  key={component.name}
+                  className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground"
+                  title={component.status}
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      ok ? "bg-primary/70" : "bg-destructive",
+                    )}
+                  />
+                  {component.name}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {degraded && trouble.length > 0 && (
+          <ul className="mt-4 space-y-1.5 border-t border-border pt-4">
+            {trouble.map((entry) => (
+              <li key={entry.name} className="text-sm text-foreground/80">
+                {entry.shortlink ? (
+                  <a
+                    href={entry.shortlink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                  >
+                    {entry.name}
+                  </a>
+                ) : (
+                  entry.name
+                )}
+                <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                  {entry.status.replace("_", " ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -418,7 +531,8 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="border-t border-border py-8">
+      <footer className="border-t border-border pb-8 pt-6">
+        <SystemStatusPanel />
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground sm:flex-row sm:px-6">
           <p>Nixtab — built on the open-source v86 emulator</p>
           <p>Distros belong to their respective projects</p>
