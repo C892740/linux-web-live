@@ -138,18 +138,19 @@ export function useV86(
   /**
    * Scale the emulated display to exactly fill the screen box (aspect-fit).
    *
-   * v86's screen_set_scale multiplies the ACTIVE surface's current size —
-   * canvas CSS size in graphics mode, a CSS transform on the text div in
-   * text mode — and auto-upscales small canvases internally. Instead of
-   * guessing those factors we reset the scale to 1, measure the surface's
-   * natural size, and apply an exact fit for the current box. This also
-   * fixes the old bug where the scale was computed against a content-sized
-   * container, leaving the display small inside a huge black frame.
+   * We deliberately do NOT drive v86's screen_set_scale: it writes inline
+   * sizes/transforms on the active surface mid-layout (and auto-upscales
+   * small canvases using window dimensions), which is exactly what produced
+   * the top-left-anchored display with dead bands in fullscreen. Instead the
+   * display is left at its natural, v86-managed size — which the flex
+   * container always keeps centered — and we scale the container itself
+   * with a CSS transform. Transforms don't affect layout, so this can't
+   * ping-pong the ResizeObserver and the content stays centered at every
+   * scale (transform-origin defaults to the container's center).
    */
   const applyDisplayScale = useCallback(() => {
-    const emu = emulatorRef.current;
     const container = containerRef.current;
-    if (!emu?.screen_set_scale || !container) return;
+    if (!container) return;
 
     const canvas = container.querySelector("canvas");
     const textEl = container.firstElementChild as HTMLElement | null;
@@ -158,29 +159,21 @@ export function useV86(
     const surface = canvasVisible ? canvas : textEl;
     if (!surface) return;
 
-    emu.screen_set_scale(1, 1); // clear previous scale before measuring
-
     const availW = container.clientWidth;
     const availH = container.clientHeight;
     if (!availW || !availH) return;
 
+    // Measure the surface's natural (untransformed) size.
+    container.style.transform = "";
     const rect = surface.getBoundingClientRect();
     if (rect.width < 8 || rect.height < 8) return; // not laid out yet
 
     const scale = Math.min(availW / rect.width, availH / rect.height);
     if (!(scale > 0) || !Number.isFinite(scale)) return;
 
-    // For the canvas v86 divides the scale by a fractional devicePixelRatio
-    // (its own device-pixel-exactness trick) but applies text transforms
-    // verbatim. Compensate per surface: without this, any machine with
-    // 125%/150% OS scaling (fractional DPR) rendered the fit ~20% small,
-    // which read as "the display doesn't cover the screen".
-    const dpr = window.devicePixelRatio || 1;
-    const applied =
-      canvasVisible && !Number.isInteger(dpr) ? scale * dpr : scale;
-    if (applied > 0 && Number.isFinite(applied)) {
-      emu.screen_set_scale(applied, applied);
-    }
+    // Snap near-exact fits to 1 to avoid resampling a 1:1 display.
+    const applied = Math.abs(scale - 1) < 0.01 ? 1 : scale;
+    container.style.transform = applied === 1 ? "" : `scale(${applied})`;
   }, []);
 
   /**
@@ -314,6 +307,10 @@ export function useV86(
         ro.observe(container);
         const canvas = container.querySelector("canvas");
         if (canvas) ro.observe(canvas);
+        // Text-mode resolution changes (80→132 cols etc.) resize the text
+        // div, not the container — observe it too so the fit tracks it.
+        const textEl = container.firstElementChild;
+        if (textEl) ro.observe(textEl);
         resizeObserverRef.current = ro;
       }
 
@@ -392,12 +389,8 @@ export function useV86(
       let lastText = "";
       let lastCounter = -1;
       let lastChange = Date.now();
-      let warned = false;
+      let noBootHinted = false;
       const renderWatch = window.setInterval(() => {
-        if (warned) {
-          window.clearInterval(renderWatch);
-          return;
-        }
         const emu = emulatorRef.current;
         if (!emu || !settled) return;
         try {
@@ -410,6 +403,19 @@ export function useV86(
           const screen = readTextScreen();
           if (!screen) return; // adapter unavailable — never guess
           const text = screen.join("\n");
+
+          // SeaBIOS printout "No bootable device." means the BIOS read the
+          // attached media but found no bootable record on any of them —
+          // almost always a 64-bit-only or non-bootable image, NEVER a RAM
+          // setting. Say so once instead of leaving the 60s retry loop up.
+          if (!noBootHinted && /no bootable device/i.test(text)) {
+            noBootHinted = true;
+            toast.info(
+              "The machine found no bootable device — the image was attached and read, but it contains no bootable 32-bit x86 boot record. Memory settings never cause this: it means the file is a 64-bit-only or non-bootable image. Try a 32-bit (i386) build.",
+              { duration: 12_000 },
+            );
+          }
+
           if (!text.trim()) return; // nothing printed yet — boot may be slow
           if (text !== lastText) {
             lastText = text;
@@ -427,7 +433,6 @@ export function useV86(
             emu.is_running?.() !== false &&
             Date.now() - lastChange > 45_000
           ) {
-            warned = true;
             window.clearInterval(renderWatch);
             toast.warning(
               "The guest has stopped responding — no screen output and no CPU activity for 45 seconds. It may have run out of memory. Try Reset, or boot with more RAM or a lighter image.",

@@ -7,6 +7,7 @@ import {
   MAX_CUSTOM_BYTES,
   makeCustomDistro,
   planCustomBoot,
+  validateIsoBoot,
 } from "@/lib/custom-iso";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -19,6 +20,7 @@ import {
   Loader2,
   MousePointerClick,
   RotateCcw,
+  ScanSearch,
   TerminalSquare,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
@@ -31,6 +33,7 @@ const MEMORY_CHOICES = [64, 128, 256, 512, 768, 1024];
 
 type Stage =
   | { kind: "pick" }
+  | { kind: "checking"; file: File }
   | { kind: "ready"; file: File; boot: import("@/lib/distros").BootMedia; warning?: string }
   | { kind: "running"; file: File; boot: import("@/lib/distros").BootMedia }
   | { kind: "rejected"; message: string };
@@ -59,18 +62,62 @@ export default function RunCustom() {
     goFullscreen,
   } = useV86(plan, { file: stage.kind === "running" ? stage.file : null, memoryMb });
 
-  const accept = useCallback((file: File) => {
+  const accept = useCallback(async (file: File) => {
     const result = planCustomBoot(file);
     if (result.rejected) {
       setStage({ kind: "rejected", message: result.rejected });
       return;
     }
-    setStage({
-      kind: "ready",
-      file,
-      boot: result.boot,
-      warning: result.warning,
-    });
+    setStage({ kind: "checking", file });
+
+    // Pre-flight: read the volume descriptors + El Torito boot catalog
+    // (3×2 KB) and confirm the BIOS will actually find a boot record. This
+    // catches corrupted/incomplete ISOs in milliseconds instead of letting
+    // the user watch SeaBIOS fail with an opaque "code 0003".
+    let boot = result.boot;
+    const extra: string[] = [];
+    if (boot === "cdrom") {
+      const validation = await validateIsoBoot(file);
+      if (validation.kind === "unreadable") {
+        setStage({
+          kind: "rejected",
+          message: `The file couldn't be read (${validation.detail}). It may still be downloading or the disk may be having issues.`,
+        });
+        return;
+      }
+      if (validation.kind === "truncated") {
+        setStage({
+          kind: "rejected",
+          message: `The ISO is incomplete: it should be ${validation.expectedMb} MB but only ${validation.actualMb} MB are there. The download was interrupted or the copy is damaged — re-download the ISO (compare the file size with the source) and try again.`,
+        });
+        return;
+      }
+      if (validation.kind === "invalid-catalog") {
+        if (validation.hasMbr) {
+          // isohybrid-style image whose CD catalog is damaged but whose hard-
+          // disk boot record is intact: boot it as a disk instead of CD.
+          boot = "hda";
+          extra.push(
+            "This image's CD boot catalog is invalid, so it can't boot as a CD-ROM — but it has a valid boot sector, so it's attached as a hard disk instead (how isohybrid USB images boot).",
+          );
+        } else {
+          setStage({
+            kind: "rejected",
+            message:
+              "This file has no valid CD boot record (El Torito), so the machine would stop at “Boot failed: Could not read from CDROM” → “No bootable device”. The download is most likely incomplete or corrupted — re-download the ISO and check its size against the source, or test it on real hardware.",
+          });
+          return;
+        }
+      }
+      // "mbr" (non-ISO raw image mislabelled .iso) already boots as hda.
+      if (validation.kind === "eltorito" && validation.note) {
+        extra.push(validation.note);
+      }
+    }
+
+    const warning =
+      [result.warning, ...extra].filter(Boolean).join(" ") || undefined;
+    setStage({ kind: "ready", file, boot, warning });
   }, []);
 
   const handleFile = (file: File | undefined) => {
@@ -78,7 +125,7 @@ export default function RunCustom() {
     // No FileReader pass: the File object is handed to v86, which lazy-reads
     // it from disk in 4 MB chunks as the guest OS touches it. Booting a
     // 300 MB–2 GB ISO is instant instead of a long, memory-hungry read.
-    accept(file);
+    void accept(file);
   };
 
   const powerOn = () => {
@@ -288,7 +335,11 @@ export default function RunCustom() {
             type="file"
             accept=".iso,.bin,.img,.ima,.dsk,.raw,.vhd"
             className="sr-only"
-            onChange={(e) => handleFile(e.target.files?.[0])}
+            onChange={(e) => {
+              handleFile(e.target.files?.[0]);
+              // Allow re-selecting the same file after a rejection.
+              e.target.value = "";
+            }}
           />
           <FileUp className="size-8 text-muted-foreground" />
           <span className="font-semibold">
@@ -299,6 +350,22 @@ export default function RunCustom() {
             {(MAX_CUSTOM_BYTES / MB / 1024).toFixed(0)} GB
           </span>
         </label>
+
+        {stage.kind === "checking" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-5 flex items-center gap-3 rounded-lg border border-border bg-card p-5 shadow-block"
+          >
+            <ScanSearch className="size-5 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="truncate font-semibold">Checking {stage.file.name}…</p>
+              <p className="font-mono text-xs uppercase tracking-[0.1em] text-muted-foreground">
+                verifying the boot record before powering on
+              </p>
+            </div>
+          </motion.div>
+        )}
 
         {stage.kind === "rejected" && (
           <div className="mt-5 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">

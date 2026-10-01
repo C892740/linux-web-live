@@ -16,6 +16,41 @@ Semver `MAJOR.MINOR.PATCH`, applied on every update:
 The version lives in `package.json` and `public/manifest.webmanifest` and must
 be bumped as part of every change.
 
+## [2.0.1] — 2026-10-01
+
+Patch release: honest pre-flight checks for local images, a clearer no-boot
+explanation, and a fullscreen fit that can no longer anchor top-left.
+
+### Added
+- **Local images are validated before power-on.** The first 3 sectors of an
+  `.iso` (volume descriptors + El Torito boot catalog) are read in the
+  browser before the machine starts. A file with no valid CD boot record is
+  rejected up front with an explanation and a re-download hint, instead of
+  booting to SeaBIOS's opaque “Boot failed: Could not read from CDROM (code
+  0003)” → “No bootable device” loop. Images with a damaged CD catalog but
+  an intact boot sector (isohybrid-style) fall back to booting as a hard
+  disk, with a note. (Root cause of the NoblePup32 report: that specific
+  file fails boot-catalog validation — not RAM, which never affects
+  bootability — and the same ISO family boots cleanly when the file is
+  intact.)
+- SeaBIOS's “No bootable device.” screen now triggers a one-time toast
+  explaining it means the image has no bootable 32-bit boot record (typically
+  a 64-bit-only ISO) — and that memory settings never cause it.
+
+### Fixed
+- **Fullscreen display anchored top-left with black bands.** v86's own
+  `screen_set_scale` writes inline sizes/transforms on the canvas
+  mid-layout (and auto-upscales small canvases against window dimensions),
+  which fought the centering layout and left the display pinned to the
+  top-left in fullscreen. The fit is now a CSS transform on the screen
+  container itself: the flex layout keeps the display centered at every
+  scale, transforms don't affect layout so the fit can't ping-pong the
+  ResizeObserver, and the v86 surface is left untouched.
+- Text-mode resolution changes (80→132 columns) now trigger a refit (only
+  container/canvas resizes were observed before).
+- The `/boot` memory-slider note no longer reads as if RAM decides
+  bootability — it's performance advice only.
+
 ## [2.0.0] — 2026-10-01
 
 Major reliability release: guests that silently never started now boot, the
