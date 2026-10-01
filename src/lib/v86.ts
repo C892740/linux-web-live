@@ -8,9 +8,14 @@
  *
  * The loader is idempotent and promise-cached so React StrictMode's double
  * mount doesn't insert two scripts.
+ *
+ * Pinned to 0.5.465: hundreds of upstream CPU/IDE/VGA fixes land between
+ * 0.5.44 and this build — several guests that silently failed or thrashed
+ * under 0.5.44 boot cleanly here. Verified headlessly against every catalog
+ * image (kernel console, JWM/FLTK desktops, floppy OS) before pinning.
  */
 
-const V86_VERSION = "0.5.44";
+const V86_VERSION = "0.5.465";
 const CDN = `https://cdn.jsdelivr.net/npm/v86@${V86_VERSION}`;
 
 export const V86_WASM_URL = `${CDN}/build/v86.wasm`;
@@ -31,16 +36,27 @@ export interface V86Constructor {
   new (options: Record<string, unknown>): V86Instance;
 }
 
+export interface V86ScreenAdapter {
+  /** Current text-mode screen contents, one string per row. */
+  get_text_screen?(): string[];
+}
+
 export interface V86Instance {
-  destroy(): void;
+  destroy(): void | Promise<void>;
   keyboard_send_scancodes?(codes: number[]): void;
   serial0_send?(text: string): void;
   restart?(): void;
   stop?(): void;
-  /** Current text-mode screen contents (v86 screen adapter). */
-  get_text_screen?(): string[];
   /** True while the emulated CPU is executing. */
   is_running?(): boolean;
+  /** Monotonic count of executed instructions (wraps at 2^32); a frozen
+   *  counter while is_running() means the guest is truly not executing. */
+  get_instruction_counter?(): number;
+  /**
+   * Text-mode screen contents. v86 keeps this on the screen adapter (not the
+   * instance), so always optional-chain both levels.
+   */
+  screen_adapter?: V86ScreenAdapter;
   /** Set the display scale (x, y multipliers). */
   screen_set_scale?(x: number, y: number): void;
 }

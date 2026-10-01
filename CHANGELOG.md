@@ -16,6 +16,49 @@ Semver `MAJOR.MINOR.PATCH`, applied on every update:
 The version lives in `package.json` and `public/manifest.webmanifest` and must
 be bumped as part of every change.
 
+## [2.0.0] — 2026-10-01
+
+Major reliability release: guests that silently never started now boot, the
+display truly fills the machine screen (fullscreen included), and the false
+"out of memory" freeze toast is gone.
+
+### Fixed
+- **Kernel-image and floppy guests never started.** v86 only accepts the
+  option keys `bzimage` / `fda`; the app was passing `kernel` / `floppy`,
+  which the emulator silently drops — leaving Buildroot and Mobius (and any
+  `/boot` file detected as a kernel or floppy) parked on a SeaBIOS "No
+  bootable device" screen while the UI showed a running session. Media names
+  are now mapped to the real v86 keys at the API boundary.
+- **False "guest looks frozen — may have run out of memory" toasts.** The
+  watchdog read text through an instance method v86 doesn't expose and
+  treated pixel-stable desktops as frozen, so it fired on healthy sessions
+  (e.g. DSL showing Firefox). It now reads the real text buffer via the
+  screen adapter, stays silent in graphics mode (an idle desktop is
+  supposed to be static), and warns once — only when a text-mode boot stops
+  printing for 30 seconds.
+- **Display didn't cover the machine screen, especially in fullscreen.** The
+  scale was computed against a content-sized container (circular: the canvas
+  sized its own box), capping the display small inside a big black frame.
+  Scaling now resets v86's scale, measures the active surface's natural
+  size, and applies an exact aspect-fit to the real screen box — refitting
+  on fullscreen changes, window resizes, and guest resolution switches. It
+  also compensates v86's fractional-DPR canvas quirk, which had undersized
+  the fit ~20% on 125%/150% Windows display scaling.
+- Fullscreen now targets the whole machine frame, and in fullscreen the
+  screen area flexes to the viewport so the display covers the entire
+  screen instead of keeping its in-page size.
+- Text-mode output is centered and scaled instead of hugging the top-left
+  corner of a mostly-empty frame.
+
+### Changed
+- **v86 0.5.44 → 0.5.465** — roughly 420 upstream releases of CPU, IDE,
+  VGA, and ACPI fixes. Every catalog image was verified booting headlessly
+  before pinning: Buildroot to its kernel console, DSL to its 1024×768 JWM
+  desktop, Mobius to its shell, Tiny Core to its boot menu, Linux 3 to text
+  mode.
+- `/boot` large-image advice now reflects lazy disk streaming (files are no
+  longer read into tab memory before boot).
+
 ## [1.0.0] — 2026-09-26
 
 First major release: the platform is stable, fast, and documented.

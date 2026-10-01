@@ -50,6 +50,7 @@ export default function RunCustom() {
 
   const {
     containerRef,
+    frameRef,
     phase,
     error,
     start,
@@ -157,7 +158,10 @@ export default function RunCustom() {
             </div>
           </div>
 
-          <div className="mt-6 overflow-hidden rounded-lg border border-foreground/15 bg-[#0c1410] shadow-block-lg">
+          <div
+            ref={frameRef}
+            className="machine-frame mt-6 flex flex-col overflow-hidden rounded-lg border border-foreground/15 bg-[#0c1410] shadow-block-lg"
+          >
             <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
               <span className="size-2.5 rounded-full bg-[#ff5f57]" />
               <span className="size-2.5 rounded-full bg-[#febc2e]" />
@@ -166,11 +170,11 @@ export default function RunCustom() {
                 your image — v86 machine — {memoryMb} MB
               </span>
             </div>
-            <div className="relative">
+            <div className="machine-screen relative h-[420px] min-h-0 sm:h-[min(62dvh,640px)]">
               <div
                 ref={containerRef}
                 id="screen_container"
-                className="min-h-[420px] font-mono text-[15px] leading-[1.45] text-[#e5e7eb] sm:min-h-[520px]"
+                className="absolute inset-0 flex items-center justify-center overflow-hidden font-mono text-[15px] leading-[1.45] text-[#e5e7eb]"
               >
                 <div style={{ whiteSpace: "pre", padding: "16px" }} />
                 <canvas style={{ display: "none" }} />

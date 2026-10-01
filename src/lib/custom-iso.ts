@@ -71,7 +71,7 @@ export function planCustomBoot(file: File): CustomBootPlan {
 
   if (file.size > WARN_CUSTOM_BYTES) {
     warnings.push(
-      "Large image — the whole file is read into this tab's memory and boot will be slow. Under 300 MB gives the best experience.",
+      "Large image — it streams from disk lazily as the guest boots, but big ISOs are heavy for a 32-bit emulator and boot slowly. Under 300 MB gives the best experience.",
     );
   }
 

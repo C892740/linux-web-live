@@ -5,7 +5,7 @@ import {
   VGABIOS_URL,
   type V86Instance,
 } from "@/lib/v86";
-import type { Distro } from "@/lib/distros";
+import type { BootMedia, Distro } from "@/lib/distros";
 import { toast } from "sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -17,8 +17,26 @@ export type BootPhase =
   | "running"
   | "error";
 
+/**
+ * v86 only accepts these media option keys: cdrom, hda, hdb, fda, fdb,
+ * bzimage, initrd, multiboot (verified in libv86's continue_init switch).
+ * Anything else is silently dropped and the BIOS falls through to
+ * "No bootable device" — which is exactly why the kernel-image and floppy
+ * entries never started before 2.0.0. Map our UI-facing media names onto
+ * the real keys at the API boundary.
+ */
+const BOOT_MEDIA_TO_V86: Record<BootMedia, string> = {
+  cdrom: "cdrom",
+  hda: "hda",
+  kernel: "bzimage",
+  floppy: "fda",
+};
+
 export interface UseV86Result {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  /** The machine frame (title bar + screen + hint bar) — the element we
+   *  fullscreen so the whole machine fills the viewport. */
+  frameRef: React.RefObject<HTMLDivElement | null>;
   phase: BootPhase;
   /** 0–100 for the engine/image download, null when size is unknown. */
   progress: number | null;
@@ -64,28 +82,11 @@ async function fetchWithProgress(
 const CTRL_ALT_DEL_SCANCODES = [0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d];
 
 /**
- * Cheap visual fingerprint of the emulated canvas: downsample to 16×16 and
- * hash the RGB bytes. Detects "is the picture actually changing" without
- * reading the full framebuffer.
+ * Download cache for catalog images — a reset/reboot reuses the bytes
+ * instead of refetching (the UI has always promised "reboots reuse the
+ * cache"; now it actually does). Keyed by distro id.
  */
-function canvasFingerprint(canvas: HTMLCanvasElement): string {
-  try {
-    const sample = document.createElement("canvas");
-    sample.width = 16;
-    sample.height = 16;
-    const ctx = sample.getContext("2d");
-    if (!ctx) return "";
-    ctx.drawImage(canvas, 0, 0, 16, 16);
-    const data = ctx.getImageData(0, 0, 16, 16).data;
-    let hash = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      hash = ((hash * 31 + data[i] + data[i + 1] + data[i + 2]) | 0) + 1;
-    }
-    return String(hash);
-  } catch {
-    return "";
-  }
-}
+const imageCache = new Map<string, ArrayBuffer>();
 
 export interface UseV86Overrides {
   /** Local image file (e.g. a user's own ISO). Passed to v86 as a LAZY
@@ -100,13 +101,6 @@ export interface UseV86Overrides {
 }
 
 /**
- * Download cache for catalog images — a reset/reboot reuses the bytes
- * instead of refetching (the UI has always promised "reboots reuse the
- * cache"; now it actually does). Keyed by distro id.
- */
-const imageCache = new Map<string, ArrayBuffer>();
-
-/**
  * Boots a distro in v86, exposing UI-facing phase/progress/error state.
  *
  * The emulator is created exactly once per session (guarded by a ref) and
@@ -118,10 +112,16 @@ export function useV86(
   overrides?: UseV86Overrides,
 ): UseV86Result {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const emulatorRef = useRef<V86Instance | null>(null);
   const bootedRef = useRef(false);
   /** All boot-scoped timer ids (text poll, stuck timer, freeze watchdog). */
   const timersRef = useRef<number[]>([]);
+  /** Guards the refit path against ResizeObserver ping-pong (see scheduleFit). */
+  const fittingRef = useRef(false);
+  /** A refit requested while one was already in flight. */
+  const pendingFitRef = useRef(false);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   const clearTimers = useCallback(() => {
     for (const id of timersRef.current) {
@@ -135,6 +135,82 @@ export function useV86(
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Scale the emulated display to exactly fill the screen box (aspect-fit).
+   *
+   * v86's screen_set_scale multiplies the ACTIVE surface's current size —
+   * canvas CSS size in graphics mode, a CSS transform on the text div in
+   * text mode — and auto-upscales small canvases internally. Instead of
+   * guessing those factors we reset the scale to 1, measure the surface's
+   * natural size, and apply an exact fit for the current box. This also
+   * fixes the old bug where the scale was computed against a content-sized
+   * container, leaving the display small inside a huge black frame.
+   */
+  const applyDisplayScale = useCallback(() => {
+    const emu = emulatorRef.current;
+    const container = containerRef.current;
+    if (!emu?.screen_set_scale || !container) return;
+
+    const canvas = container.querySelector("canvas");
+    const textEl = container.firstElementChild as HTMLElement | null;
+    const canvasVisible =
+      !!canvas && canvas.style.display !== "none" && canvas.width > 0;
+    const surface = canvasVisible ? canvas : textEl;
+    if (!surface) return;
+
+    emu.screen_set_scale(1, 1); // clear previous scale before measuring
+
+    const availW = container.clientWidth;
+    const availH = container.clientHeight;
+    if (!availW || !availH) return;
+
+    const rect = surface.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) return; // not laid out yet
+
+    const scale = Math.min(availW / rect.width, availH / rect.height);
+    if (!(scale > 0) || !Number.isFinite(scale)) return;
+
+    // For the canvas v86 divides the scale by a fractional devicePixelRatio
+    // (its own device-pixel-exactness trick) but applies text transforms
+    // verbatim. Compensate per surface: without this, any machine with
+    // 125%/150% OS scaling (fractional DPR) rendered the fit ~20% small,
+    // which read as "the display doesn't cover the screen".
+    const dpr = window.devicePixelRatio || 1;
+    const applied =
+      canvasVisible && !Number.isInteger(dpr) ? scale * dpr : scale;
+    if (applied > 0 && Number.isFinite(applied)) {
+      emu.screen_set_scale(applied, applied);
+    }
+  }, []);
+
+  /**
+   * Defer a refit by one frame. The guard flag swallows the ResizeObserver
+   * callback triggered by our own scale change — otherwise refit → box
+   * change → refit would ping-pong forever. Requests that arrive while a
+   * fit is in flight are coalesced into one trailing pass (applying the
+   * same scale twice is a no-op, so this still converges).
+   */
+  const scheduleFit = useCallback(() => {
+    if (fittingRef.current) {
+      pendingFitRef.current = true;
+      return;
+    }
+    fittingRef.current = true;
+    window.requestAnimationFrame(() => {
+      try {
+        applyDisplayScale();
+      } finally {
+        window.requestAnimationFrame(() => {
+          fittingRef.current = false;
+          if (pendingFitRef.current) {
+            pendingFitRef.current = false;
+            scheduleFit();
+          }
+        });
+      }
+    });
+  }, [applyDisplayScale]);
+
   const boot = useCallback(async () => {
     if (!distro) return;
 
@@ -144,7 +220,13 @@ export function useV86(
       setPhase("loading-engine");
 
       const V86 = await loadV86();
-      const container = containerRef.current;
+      // /boot flips its stage and calls start() in the same tick — give
+      // React one beat to commit the screen container before reading it.
+      let container = containerRef.current;
+      if (!container) {
+        await new Promise((r) => window.setTimeout(r, 50));
+        container = containerRef.current;
+      }
       if (!container) throw new Error("Screen container is missing.");
 
       // v86's npm package ships without the BIOS binaries (seabios.bin and
@@ -211,44 +293,65 @@ export function useV86(
         autostart: true,
         disable_speaker: true,
         // Modern guest kernels (Puppy's 6.x, etc.) probe for ACPI; exposing
-        // it avoids long stalls and hardware-detection timeouts.
+        // it avoids long stalls and hardware-detection timeouts. Verified
+        // headlessly that DSL / TinyCore / buildroot all boot fine with it.
         acpi: true,
         bios: { buffer: biosBuffer },
         vga_bios: { buffer: vgaBiosBuffer },
-        [distro.boot]: { buffer: bootBuffer, async: bootAsync },
+        // THE critical fix: attach the image under the option key v86
+        // actually reads. "kernel"/"floppy" are silently ignored upstream,
+        // which left those guests at a SeaBIOS "No bootable device" screen.
+        [BOOT_MEDIA_TO_V86[distro.boot]]: { buffer: bootBuffer, async: bootAsync },
       } as Record<string, unknown>);
       emulatorRef.current = emulator;
 
+      // Observe box changes on the screen container and the canvas: entering
+      // fullscreen, window resizes, and guest video-mode switches (the guest
+      // changing resolution changes the canvas's CSS box) all arrive here.
+      resizeObserverRef.current?.disconnect();
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => scheduleFit());
+        ro.observe(container);
+        const canvas = container.querySelector("canvas");
+        if (canvas) ro.observe(canvas);
+        resizeObserverRef.current = ro;
+      }
+
       // Boot detection that reads REAL machine signals instead of DOM:
-      //  - text mode: get_text_screen() returns non-blank content once the
+      //  - text mode: the screen adapter reports non-blank rows once the
       //    BIOS/guest has written to the VGA text buffer
-      //  - graphics mode: v86 flips text div hidden / canvas visible
+      //  - graphics mode: v86 flips text div hidden / canvas visible, which
+      //    the MutationObserver below catches
       //  - 18s with zero video output → clear error explaining likely causes
       let settled = false;
-      const stuckTimer = { id: undefined as number | undefined };
       const settle = () => {
         if (settled) return;
         settled = true;
-        if (stuckTimer.id !== undefined) window.clearTimeout(stuckTimer.id);
         setPhase("running");
       };
 
-      const poll = window.setInterval(() => {
-        timersRef.current.push(poll);
-        const emu = emulatorRef.current;
-        if (!emu) return;
-        if (typeof emu.get_text_screen === "function") {
+      const readTextScreen = (): string[] | null => {
+        const adapter = emulatorRef.current?.screen_adapter;
+        if (typeof adapter?.get_text_screen === "function") {
           try {
-            const screen = emu.get_text_screen();
-            if (screen.some((row) => row.trim().length > 0)) {
-              window.clearInterval(poll);
-              settle();
-            }
+            return adapter.get_text_screen();
           } catch {
-            // screen adapter not ready yet — keep polling
+            return null;
           }
         }
+        return null;
+      };
+
+      const poll = window.setInterval(() => {
+        const emu = emulatorRef.current;
+        if (!emu) return;
+        const screen = readTextScreen();
+        if (screen?.some((row) => row.trim().length > 0)) {
+          window.clearInterval(poll);
+          settle();
+        }
       }, 500);
+      timersRef.current.push(poll);
 
       const observer = new MutationObserver(() => {
         settle();
@@ -263,8 +366,7 @@ export function useV86(
         characterData: true,
       });
 
-      stuckTimer.id = window.setTimeout(() => {
-        timersRef.current.push(stuckTimer.id!);
+      const stuckTimer = window.setTimeout(() => {
         window.clearInterval(poll);
         observer.disconnect();
         setPhase((p) => {
@@ -275,33 +377,60 @@ export function useV86(
           return "error";
         });
       }, 18_000);
+      timersRef.current.push(stuckTimer);
 
-      // Freeze watchdog: a healthy guest repaints continuously. Sample the
-      // actual screen surface — text-buffer contents in text mode, canvas
-      // pixels in graphics mode — and warn (non-destructively) when nothing
-      // has changed for 20s while the CPU claims to be running. Heavy apps
-      // exhausting guest RAM look exactly like this.
-      let surfaceFingerprint = "";
+      // Freeze watchdog — text mode only, deliberately silent in graphics
+      // mode, and only fires when the guest is PROVABLY not executing
+      // anything. Background: the old canvas-hash watchdog fired "out of
+      // memory" toasts on healthy sessions because an idle desktop is
+      // pixel-stable by nature. A static console is no better a signal —
+      // first-boot steps like gtk-icon-cache updates crunch for minutes
+      // with no output while the instruction counter races. So we warn only
+      // when the text screen has been static AND the emulated CPU has
+      // executed nothing new for 45s: a wedged guest (dead init, RAM
+      // exhaustion). A busy guest is never accused of being frozen.
+      let lastText = "";
+      let lastCounter = -1;
       let lastChange = Date.now();
+      let warned = false;
       const renderWatch = window.setInterval(() => {
-        timersRef.current.push(renderWatch);
+        if (warned) {
+          window.clearInterval(renderWatch);
+          return;
+        }
         const emu = emulatorRef.current;
         if (!emu || !settled) return;
         try {
           const canvas = container.querySelector("canvas");
           const graphical = canvas && canvas.style.display !== "none";
-          const fp = graphical
-            ? `c:${canvasFingerprint(canvas)}`
-            : `t:${typeof emu.get_text_screen === "function" ? emu.get_text_screen().join("\n") : ""}`;
-          if (fp !== surfaceFingerprint) {
-            surfaceFingerprint = fp;
+          if (graphical) {
             lastChange = Date.now();
             return;
           }
-          if (emu.is_running?.() && Date.now() - lastChange > 20_000) {
+          const screen = readTextScreen();
+          if (!screen) return; // adapter unavailable — never guess
+          const text = screen.join("\n");
+          if (!text.trim()) return; // nothing printed yet — boot may be slow
+          if (text !== lastText) {
+            lastText = text;
+            lastChange = Date.now();
+            return;
+          }
+          // Text is static: is the CPU still executing instructions? A busy
+          // guest (slow setup steps) must never be flagged; only a truly
+          // frozen CPU counts.
+          const counter = emu.get_instruction_counter?.() ?? -1;
+          const cpuMoving = counter !== lastCounter;
+          lastCounter = counter;
+          if (cpuMoving) return;
+          if (
+            emu.is_running?.() !== false &&
+            Date.now() - lastChange > 45_000
+          ) {
+            warned = true;
             window.clearInterval(renderWatch);
             toast.warning(
-              "The guest looks frozen — it may have run out of memory. Try Reset, or reboot with more RAM or a lighter image.",
+              "The guest has stopped responding — no screen output and no CPU activity for 45 seconds. It may have run out of memory. Try Reset, or boot with more RAM or a lighter image.",
               { duration: 10_000 },
             );
           }
@@ -309,6 +438,7 @@ export function useV86(
           /* screen surface unavailable — ignore this tick */
         }
       }, 5_000);
+      timersRef.current.push(renderWatch);
     } catch (err) {
       emulatorRef.current?.destroy();
       emulatorRef.current = null;
@@ -320,7 +450,7 @@ export function useV86(
     }
     // `overrides` is read at boot time; callers hold it stable while a
     // session is live (the image must not change mid-boot).
-  }, [distro, overrides?.file, overrides?.memoryMb, overrides?.biosBuffers]);
+  }, [distro, overrides?.file, overrides?.memoryMb, overrides?.biosBuffers, scheduleFit]);
 
   const start = useCallback(() => {
     if (!distro || distro.comingSoon || bootedRef.current) return;
@@ -333,6 +463,8 @@ export function useV86(
       emulatorRef.current.destroy();
       emulatorRef.current = null;
     }
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
     clearTimers();
     bootedRef.current = false;
     setPhase("idle");
@@ -345,17 +477,20 @@ export function useV86(
   }, []);
 
   const goFullscreen = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    // Fullscreen the whole machine frame (title bar + screen + hint bar), not
+    // just the raw canvas container, so the display area can flex to the
+    // viewport height instead of keeping its in-page height.
+    const target = frameRef.current ?? containerRef.current;
+    if (!target) return;
 
     // Custom fullscreen instead of v86's screen_go_fullscreen(): that one
     // hard-requires pointer lock, which sandboxed/embedded frames refuse
     // (SecurityError crash). Plain element fullscreen + our own scaling
     // gives the same result without the hard dependency.
     const request =
-      container.requestFullscreen?.bind(container) ??
-      (container as Element & { webkitRequestFullscreen?: () => void })
-        .webkitRequestFullscreen?.bind(container);
+      target.requestFullscreen?.bind(target) ??
+      (target as Element & { webkitRequestFullscreen?: () => void })
+        .webkitRequestFullscreen?.bind(target);
 
     if (!request) {
       toast.info(
@@ -378,55 +513,31 @@ export function useV86(
     }
   }, []);
 
-  /**
-   * Scale the emulated display to fill the available surface (the browser
-   * viewport in fullscreen, the machine frame otherwise) at the guest's
-   * native resolution — integer-preserving aspect, no blur.
-   */
-  const applyDisplayScale = useCallback(() => {
-    const emu = emulatorRef.current;
-    const container = containerRef.current;
-    if (!emu?.screen_set_scale || !container) return;
-
-    const canvas = container.querySelector("canvas");
-    const graphical = canvas && canvas.style.display !== "none";
-    // Text mode is 720×400 (80×25 at 9×16); graphics mode uses the canvas's
-    // native framebuffer size.
-    const guestW = graphical && canvas ? canvas.width : 720;
-    const guestH = graphical && canvas ? canvas.height : 400;
-    if (!guestW || !guestH) return;
-
-    const availW = container.clientWidth;
-    const availH = container.clientHeight;
-    const scale = Math.min(availW / guestW, availH / guestH);
-    if (scale > 0 && Number.isFinite(scale)) {
-      emu.screen_set_scale(scale, scale);
-    }
-  }, []);
-
   // Re-fit the display whenever the surface changes: entering/leaving
-  // fullscreen, window resizes, or first reaching a running desktop.
+  // fullscreen, or window resizes. (Guest resolution changes arrive via the
+  // ResizeObserver attached in boot().)
   useEffect(() => {
-    const refit = () =>
-      window.setTimeout(applyDisplayScale, 150); // let layout settle
+    const refit = () => scheduleFit();
     document.addEventListener("fullscreenchange", refit);
     window.addEventListener("resize", refit);
     return () => {
       document.removeEventListener("fullscreenchange", refit);
       window.removeEventListener("resize", refit);
     };
-  }, [applyDisplayScale]);
+  }, [scheduleFit]);
 
+  // First fit once the guest reaches a running desktop (layout has settled).
   useEffect(() => {
     if (phase === "running") {
-      const t = window.setTimeout(applyDisplayScale, 250);
+      const t = window.setTimeout(scheduleFit, 200);
       return () => window.clearTimeout(t);
     }
-  }, [phase, applyDisplayScale]);
+  }, [phase, scheduleFit]);
 
   useEffect(() => {
     return () => {
       clearTimers();
+      resizeObserverRef.current?.disconnect();
       emulatorRef.current?.destroy();
       emulatorRef.current = null;
       bootedRef.current = false;
@@ -435,6 +546,7 @@ export function useV86(
 
   return {
     containerRef,
+    frameRef,
     phase,
     progress,
     error,

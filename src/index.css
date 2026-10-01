@@ -218,3 +218,26 @@
     }
   }
 }
+
+/* Machine frame fullscreen — the emulated display must cover the whole
+   screen, so the frame becomes a full-viewport flex column and the screen
+   area flexes to fill whatever the title/hint bars leave. Higher
+   specificity than the page's h-* utilities, so no !important needed. */
+.machine-frame:fullscreen,
+.machine-frame:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border-radius: 0;
+  border: none;
+}
+.machine-frame:fullscreen .machine-screen,
+.machine-frame:-webkit-full-screen .machine-screen {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+.machine-frame:fullscreen #screen_container,
+.machine-frame:-webkit-full-screen #screen_container {
+  background: #000;
+}

@@ -89,6 +89,7 @@ export default function RunDistro() {
 
   const {
     containerRef,
+    frameRef,
     phase,
     progress,
     error,
@@ -199,8 +200,13 @@ export default function RunDistro() {
           </div>
         </div>
 
-        {/* Machine screen */}
-        <div className="mt-6 overflow-hidden rounded-lg border border-foreground/15 bg-[#0c1410] shadow-block-lg">
+        {/* Machine screen. The frame is the fullscreen target: in fullscreen
+            it becomes a flex column and .machine-screen flexes to fill the
+            viewport (see index.css), so the display covers the whole screen. */}
+        <div
+          ref={frameRef}
+          className="machine-frame mt-6 flex flex-col overflow-hidden rounded-lg border border-foreground/15 bg-[#0c1410] shadow-block-lg"
+        >
           <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
             <span className="size-2.5 rounded-full bg-[#ff5f57]" />
             <span className="size-2.5 rounded-full bg-[#febc2e]" />
@@ -210,15 +216,19 @@ export default function RunDistro() {
             </span>
           </div>
 
-          <div className="relative">
+          {/* Definite-height screen area: the v86 container fills it
+              absolutely, so display scaling measures a real box instead of
+              the content's own (circular) size. */}
+          <div className="machine-screen relative h-[420px] min-h-0 sm:h-[min(62dvh,640px)]">
             {/* v86 mounts its text div + canvas inside this container.
                 It toggles .style.display between them as the guest
                 switches video modes — Tailwind classes would be
-                overwritten, so it must own these elements. */}
+                overwritten, so it must own these elements. Flex centering
+                keeps the active surface centered at any scale. */}
             <div
               ref={containerRef}
               id="screen_container"
-              className="min-h-[420px] font-mono text-[15px] leading-[1.45] text-[#e5e7eb] sm:min-h-[520px]"
+              className="absolute inset-0 flex items-center justify-center overflow-hidden font-mono text-[15px] leading-[1.45] text-[#e5e7eb]"
             >
               <div style={{ whiteSpace: "pre", padding: "16px" }} />
               <canvas style={{ display: "none" }} />
